@@ -12,6 +12,10 @@ height = 720
 # creo la finestra di gioco
 screen = pygame.display.set_mode((width, height))
 
+#carico lo sfondo del menu
+background_image = pygame.image.load("assets/images/background_start_menu.png").convert()  # carico l'immagine di sfondo
+background_image = pygame.transform.scale(background_image, (width, height))  # ridimensiono l'immagine di sfondo alle dimensioni della finestra
+
 #creo un font da usare per le voci del menu
 font = pygame.font.SysFont("Arial", 45) # font Arial, dimensione 50
 
@@ -89,7 +93,7 @@ while running: #loop per tenere aperta la finestra di gioco
             scroll_offset = 0.0  # resetto l'offset di scorrimento
 
     # aggiorno la finestra di gioco
-    screen.fill((126,213,116))  # riempio lo schermo con il colore verde
+    screen.blit(background_image, (0, 0))  # disegno lo sfondo
 
     for offset in positions:  # ciclo per disegnare le voci del menu
             index = (selected_item + offset) % len(menu_items)  # calcolo l'indice della voce da disegnare
