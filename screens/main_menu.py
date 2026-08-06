@@ -64,6 +64,11 @@ class MainMenu(Screen):
                 from screens.test_screen import TestScreen  # importo la schermata di test
                 self.state.change_screen(TestScreen(self.width, self.height, self.state))  # cambio la schermata attiva a quella di test
 
+            if event.key == pygame.K_p:
+
+                from panels.test_panel import TestPanel
+                self.state.open_panel(TestPanel(self.width, self.height, self.state))
+
 
             if event.key == pygame.K_UP:
                 self.selected_item = (self.selected_item - 1) % len(self.menu_items)  # seleziono la voce precedente

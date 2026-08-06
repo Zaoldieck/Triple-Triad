@@ -32,13 +32,22 @@ class Game:
                     running = False
 
                 # inoltro gli eventi al menu principale
-                self.state.current_screen.handle_events(event)
+                if self.state.current_panel:
+                    self.state.current_panel.handle_events(event)
+                else:
+                    self.state.current_screen.handle_events(event)
 
             # 2 LOGICA
             self.state.current_screen.update()
 
+            if self.state.current_panel:
+                self.state.current_panel.update()
+
             # 3 DISEGNO
             self.state.current_screen.draw(self.screen)
+
+            if self.state.current_panel:
+                self.state.current_panel.draw(self.screen)
 
             pygame.display.flip() # disegna tutto quello che sta nel buffer
 
