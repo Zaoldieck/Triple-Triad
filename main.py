@@ -1,6 +1,5 @@
 from game.game import Game
 
-
 # creo il gioco
 game = Game()
 
