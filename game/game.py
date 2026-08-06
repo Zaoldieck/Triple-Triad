@@ -24,8 +24,8 @@ class Game:
         self.state.change_screen(MainMenu(self.width, self.height, self.state))  # creo un'istanza della classe MainMenu
 
     def run(self): # loop per tenere aperta la finestra di gioco
-        running = True 
-        while running:
+        
+        while self.state.running:
             # 1 EVENTI
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:

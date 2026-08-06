@@ -57,17 +57,41 @@ class MainMenu(Screen):
         if self.scrolling:  # se il menu sta animando lo scorrimento, ignoro gli input
             return
 
+        #controllo mouse
+        if event.type == pygame.MOUSEBUTTONDOWN:
+
+            if event.button == 1: # tasto sinistro del mouse
+                selected = self.menu_items[self.selected_item]
+                if selected == "Exit":
+                    self.state.running = False
+
+        # controllo tastiera
         if event.type == pygame.KEYDOWN:
 
             if event.key == pygame.K_RETURN:  # se premo INVIO
 
-                from screens.test_screen import TestScreen  # importo la schermata di test
-                self.state.change_screen(TestScreen(self.width, self.height, self.state))  # cambio la schermata attiva a quella di test
+                selected = self.menu_items[self.selected_item] # assegna a selected la voce del menu centrale
 
-            if event.key == pygame.K_p:
+                if selected == "Exit":
+                    self.state.running = False
 
-                from panels.test_panel import TestPanel
-                self.state.open_panel(TestPanel(self.width, self.height, self.state))
+                elif selected == "Story Mode":
+                    pass
+
+                elif selected == "Free Match":
+                    pass
+ 
+
+
+
+
+                # from screens.test_screen import TestScreen  # importo la schermata di test
+                # self.state.change_screen(TestScreen(self.width, self.height, self.state))  # cambio la schermata attiva a quella di test
+
+            #if event.key == pygame.K_p:
+
+                #from panels.test_panel import TestPanel
+                #self.state.open_panel(TestPanel(self.width, self.height, self.state))
 
 
             if event.key == pygame.K_UP:
