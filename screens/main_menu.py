@@ -5,11 +5,14 @@ from screens.screen import Screen
 
 class MainMenu(Screen):
 
-    def __init__(self, width, height):
+    def __init__(self, width, height, state):
 
         # dimensioni della finestra
         self.width = width
         self.height = height
+    
+        # stato globale del gioco
+        self.state = state
 
         # carico lo sfondo del menu
         self.background_image = pygame.image.load("assets/images/background_start_menu.png").convert()  # carico l'immagine di sfondo

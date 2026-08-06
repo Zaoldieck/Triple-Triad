@@ -1,12 +1,14 @@
 import pygame
 
 from screens.main_menu import MainMenu # serve per importare la classe MainMenu dal file main_menu.py
+from game.state import GameState # serve per importare la classe GameState dal file state.py
 
 class Game:
     def __init__(self):
 
         #inizializzo py game
         pygame.init()
+        self.state = GameState() # creo lo stato globale del gioco
 
         # disabilito la ripetizione dei tasti in modo che non scorre velocissimo il menu
         pygame.key.set_repeat(0)
@@ -19,7 +21,7 @@ class Game:
         self.screen = pygame.display.set_mode((self.width, self.height))
 
         # creo il menu principale
-        self.current_screen = MainMenu(self.width, self.height)  # creo un'istanza della classe MainMenu
+        self.current_screen = MainMenu(self.width, self.height, self.state)  # creo un'istanza della classe MainMenu
 
     def run(self): # loop per tenere aperta la finestra di gioco
         running = True 
