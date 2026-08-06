@@ -58,6 +58,13 @@ class MainMenu(Screen):
             return
 
         if event.type == pygame.KEYDOWN:
+
+            if event.key == pygame.K_RETURN:  # se premo INVIO
+
+                from screens.test_screen import TestScreen  # importo la schermata di test
+                self.state.change_screen(TestScreen(self.width, self.height, self.state))  # cambio la schermata attiva a quella di test
+
+
             if event.key == pygame.K_UP:
                 self.selected_item = (self.selected_item - 1) % len(self.menu_items)  # seleziono la voce precedente
                 self.scrolling = True  # inizio l'animazione dello scorrimento
