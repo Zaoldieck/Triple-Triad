@@ -21,7 +21,7 @@ class Game:
         self.screen = pygame.display.set_mode((self.width, self.height))
 
         # creo il menu principale
-        self.state.current_screen = MainMenu(self.width, self.height, self.state)  # creo un'istanza della classe MainMenu
+        self.state.change_screen(MainMenu(self.width, self.height, self.state))  # creo un'istanza della classe MainMenu
 
     def run(self): # loop per tenere aperta la finestra di gioco
         running = True 

@@ -10,3 +10,6 @@ class GameState:
         self.current_panel = None  # pannello attualmente aperto (None se nessun pannello è aperto)
 
         
+    def change_screen(self, new_screen):
+        # cambia la schermata attiva attualmente
+        self.current_screen = new_screen
