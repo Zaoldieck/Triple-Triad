@@ -1,8 +1,9 @@
 import pygame
+from screens.screen import Screen
 
 # Classe che gestisce il menu principale del gioco
 
-class MainMenu:
+class MainMenu(Screen):
 
     def __init__(self, width, height):
 

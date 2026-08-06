@@ -19,7 +19,7 @@ class Game:
         self.screen = pygame.display.set_mode((self.width, self.height))
 
         # creo il menu principale
-        self.main_menu = MainMenu(self.width, self.height)  # creo un'istanza della classe MainMenu
+        self.current_screen = MainMenu(self.width, self.height)  # creo un'istanza della classe MainMenu
 
     def run(self): # loop per tenere aperta la finestra di gioco
         running = True 
@@ -30,13 +30,13 @@ class Game:
                     running = False
 
                 # inoltro gli eventi al menu principale
-                self.main_menu.handle_events(event)
+                self.current_screen.handle_events(event)
 
             # 2 LOGICA
-            self.main_menu.update()
+            self.current_screen.update()
 
             # 3 DISEGNO
-            self.main_menu.draw(self.screen)
+            self.current_screen.draw(self.screen)
 
             pygame.display.flip() # disegna tutto quello che sta nel buffer
 
