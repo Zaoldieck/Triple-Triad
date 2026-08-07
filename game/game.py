@@ -29,7 +29,7 @@ class Game:
             # 1 EVENTI
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    running = False
+                    self.state.running = False
 
                 # inoltro gli eventi al menu principale
                 if self.state.current_panel:

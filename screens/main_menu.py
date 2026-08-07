@@ -1,5 +1,6 @@
 import pygame
 from screens.screen import Screen
+from panels.deck_panel import DeckPanel
 
 # Classe che gestisce il menu principale del gioco
 
@@ -69,6 +70,10 @@ class MainMenu(Screen):
                     selected = self.menu_items[self.selected_item]
                     if selected == "Exit":
                         self.state.running = False
+                    elif selected == "Deck":
+                        self.state.open_panel(
+                            DeckPanel(self.width, self.height, self.state)
+                        )
 
         # controllo tastiera
         if event.type == pygame.KEYDOWN:
@@ -85,7 +90,11 @@ class MainMenu(Screen):
 
                 elif selected == "Free Match":
                     pass
- 
+
+                elif selected == "Deck":
+                    self.state.open_panel(
+                        DeckPanel(self.width, self.height, self.state)
+                    )
 
 
 
