@@ -51,6 +51,9 @@ class MainMenu(Screen):
              2    # voce sotto
         ]
 
+        # rettangolo della voce menu selezionata 
+        self.selected_item_rect = None
+
     # gestisco gli eventi del menu principale
     def handle_events(self, event):
 
@@ -61,9 +64,11 @@ class MainMenu(Screen):
         if event.type == pygame.MOUSEBUTTONDOWN:
 
             if event.button == 1: # tasto sinistro del mouse
-                selected = self.menu_items[self.selected_item]
-                if selected == "Exit":
-                    self.state.running = False
+                mouse_x, mouse_y = event.pos # posizione del mouse
+                if self.selected_item_rect.collidepoint(mouse_x, mouse_y): # se il cursore e' nel "rettangolo"
+                    selected = self.menu_items[self.selected_item]
+                    if selected == "Exit":
+                        self.state.running = False
 
         # controllo tastiera
         if event.type == pygame.KEYDOWN:
@@ -154,5 +159,10 @@ class MainMenu(Screen):
 
             x = (self.width - text_surface.get_width()) // 2  # calcolo la coordinata x per centrare il testo
             y = CENTER_Y + (CENTER_Y // 5 * 3) + offset * SPACING - self.scroll_offset * self.scroll_direction - text_surface.get_height() // 2  # calcolo la coordinata y per posizionare il testo
+
+            text_rect = text_surface.get_rect(topleft=(x, y))
+
+            if offset == 0:
+                self.selected_item_rect = text_rect
 
             screen.blit(text_surface, (x, y))  # disegno il testo sullo schermo
