@@ -10,7 +10,7 @@ class DeckPanel(Panel):
         self.state = state
 
         # dimensioni del pannello
-        self.panel_width = 1000
+        self.panel_width = 900
         self.panel_height = 550
 
         # dimensioni iniziali per l'animazione
@@ -29,11 +29,42 @@ class DeckPanel(Panel):
         # font 
         self.font = pygame.font.SysFont("Arial", 40)
 
+        # carico l'immagine del cursore
+        self.hand_cursor = pygame.image.load(
+            "assets/images/hand_cursor.png"
+        ).convert_alpha()
+
+        # ridimensiono il cursore manina
+        self.hand_cursor = pygame.transform.smoothscale(self.hand_cursor, (64,64))
+
+        # indice dello slot attualmente selezionato
+        self.selected_card = 0
+
+        # lista che contiene i rettangoli dei 10 slot delle carte
+        self.slot_rects = []
+
     def handle_events(self, event):
 
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 self.state.close_panel()
+
+            #faccio spostare la manina su e giu nei 10 slots del pannello
+            elif event.key == pygame.K_UP:
+                self.selected_card = (self.selected_card - 1) % 10
+
+            elif event.key == pygame.K_DOWN:
+                self.selected_card = (self.selected_card + 1) % 10
+
+        # se il mouse si muove
+        if event.type == pygame.MOUSEMOTION:
+
+            # controllo tutti i rettangoli degli slot
+            for i, slot_rect in enumerate(self.slot_rects):
+
+                # se il mouse si trova sopra uno slot, lo seleziono
+                if slot_rect.collidepoint(event.pos):
+                    self.selected_card = i
 
     # logica del pannello                
     def update(self):
@@ -66,6 +97,43 @@ class DeckPanel(Panel):
         #disegno il pannello
         pygame.draw.rect(screen, self.color, panel_rect)
 
+        # area che conterra' la lista delle carte
+        list_rect = pygame.Rect(
+            x + 30,
+            y + 30,
+            400,
+            self.current_height - 60
+        )
+        # area per la lista delle carte, disegna
+        pygame.draw.rect(screen, (70, 70, 70), list_rect)
+
+        # creo i 10 spazi per le carte della pagina
+        slot_height = 42
+        slot_spacing = 5
+
+        # svuoto la lista prima di ricreare i rettangoli degli slot
+        self.slot_rects = []
+
+        for i in range(10):
+            slot_rect = pygame.Rect(
+                list_rect.x + 10,
+                list_rect.y + 10 + i * (slot_height + slot_spacing),
+                list_rect.width - 20,
+                slot_height
+            )
+
+            self.slot_rects.append(slot_rect)
+
+            pygame.draw.rect(screen, (50,50,50), slot_rect)
+
+            # disegno la manina accanto allo slot selezionato
+            if i == self.selected_card:
+                hand_rect = self.hand_cursor.get_rect()
+                hand_rect.centery = slot_rect.centery
+                hand_rect.right = slot_rect.left - 5
+
+                screen.blit(self.hand_cursor, hand_rect)
+        
         #testo di prova
         text = self.font.render("Deck Panel - press ESC", True, (255, 255, 255))
 
