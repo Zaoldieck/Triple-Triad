@@ -46,8 +46,11 @@ class DeckPanel(Panel):
         # dato che ci sono piu pagine di carte
         self.current_page = 0
 
-        # numero pagine
-        self.total_pages = 10
+        # numero carte per pagina
+        self.cards_per_page = 10
+
+        # "lista" che contiene tutte le carte caricate
+        self.cards = []
 
         # lista che contiene i rettangoli dei 10 slot delle carte
         self.slot_rects = []
@@ -181,10 +184,6 @@ class DeckPanel(Panel):
         #disegno il numero sulla pagina
         screen.blit(page_text,page_text_rect)
 
-
-
-
-
         #testo di prova
         #text = self.font.render("Deck Panel - press ESC", True, (255, 255, 255))
 
@@ -192,3 +191,14 @@ class DeckPanel(Panel):
         #text_y = (self.height - text.get_height()) // 2
 
         #screen.blit(text, (text_x, text_y))                
+
+    @property
+    def total_pages(self):
+
+        #calcolo il numero di pagine in base alle carte caricate
+        pages = (
+            len(self.cards) + self.cards_per_page - 1
+        ) // self.cards_per_page
+
+        # mostra comunque almeno una apgina anche se non ci sono carte
+        return max(1, pages)
