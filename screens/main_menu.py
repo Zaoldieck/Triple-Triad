@@ -1,9 +1,12 @@
 import pygame
 from screens.screen import Screen
 from panels.deck_panel import DeckPanel
+# pannello di conferma per la chiusura del gioco
+from panels.exit_confirmation_panel import ExitConfirmationPanel
+
+
 
 # Classe che gestisce il menu principale del gioco
-
 class MainMenu(Screen):
 
     def __init__(self, width, height, state):
@@ -55,6 +58,17 @@ class MainMenu(Screen):
         # rettangolo della voce menu selezionata 
         self.selected_item_rect = None
 
+    # apre il pannello di conferma per uscire dal gioco
+    def open_exit_confirmation(self):
+
+        self.state.open_panel(
+            ExitConfirmationPanel(
+                self.width,
+                self.height,
+                self.state
+            )
+        )
+
     # gestisco gli eventi del menu principale
     def handle_events(self, event):
 
@@ -69,11 +83,15 @@ class MainMenu(Screen):
                 if self.selected_item_rect.collidepoint(mouse_x, mouse_y): # se il cursore e' nel "rettangolo"
                     selected = self.menu_items[self.selected_item]
                     if selected == "Exit":
-                        self.state.running = False
+                        self.open_exit_confirmation()
                     elif selected == "Deck":
                         self.state.open_panel(
                             DeckPanel(self.width, self.height, self.state)
                         )
+  
+            # il tasto destro apre la conferma di uscita
+            if event.button == 3:
+                self.open_exit_confirmation()
 
         # controllo tastiera
         if event.type == pygame.KEYDOWN:
@@ -83,7 +101,7 @@ class MainMenu(Screen):
                 selected = self.menu_items[self.selected_item] # assegna a selected la voce del menu centrale
 
                 if selected == "Exit":
-                    self.state.running = False
+                    self.open_exit_confirmation()
 
                 elif selected == "Story Mode":
                     pass

@@ -225,27 +225,43 @@ class DeckPanel(Panel):
                 ) % cards_on_page
 
 
-            # pagina sinistra e destra del pannello deck
+            # cambio pagina con le frecce sinistra e destra
             elif event.key == pygame.K_LEFT:
-                self.current_page = (self.current_page - 1) % self.total_pages
+                self.current_page = (
+                    self.current_page - 1
+                ) % self.total_pages
+
+                # seleziono la prima carta della nuova pagina
+                self.selected_card = 0
 
             elif event.key == pygame.K_RIGHT:
-                self.current_page = (self.current_page + 1) % self.total_pages
+                self.current_page = (
+                    self.current_page + 1
+                ) % self.total_pages
 
-        # evento rotella del mouse
+                # seleziono la prima carta della nuova pagina
+                self.selected_card = 0
+
+        # cambio pagina con la rotella del mouse
         if event.type == pygame.MOUSEWHEEL:
 
-            # rotella verso l'alto 
+            # rotella verso l'alto: pagina precedente
             if event.y > 0:
                 self.current_page = (
                     self.current_page - 1
                 ) % self.total_pages
 
-            # rotella verso il basso 
-            if event.y < 0:
+                # seleziono la prima carta della nuova pagina
+                self.selected_card = 0
+
+            # rotella verso il basso: pagina successiva
+            elif event.y < 0:
                 self.current_page = (
                     self.current_page + 1
                 ) % self.total_pages
+
+                # seleziono la prima carta della nuova pagina
+                self.selected_card = 0
 
         # se il mouse si muove
         if event.type == pygame.MOUSEMOTION:
@@ -259,6 +275,12 @@ class DeckPanel(Panel):
                     and slot_rect.collidepoint(event.pos)
                 ):
                     self.selected_card = i
+                    
+        if event.type == pygame.MOUSEBUTTONDOWN:
+
+            # tasto destro del mouse
+            if event.button == 3:
+                self.state.close_panel()
 
     # logica del pannello                
     def update(self):
