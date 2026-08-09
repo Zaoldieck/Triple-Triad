@@ -4,3 +4,6 @@ venv/
 
 #python cache
 __pycache__/
+
+# salvataggi locali del giocatore
+saves/

@@ -45,6 +45,12 @@ class CardCollection:
     # aggiunge una o più copie di una carta alla collezione
     def add_card(self, card, amount=1):
 
+        # accetto soltanto quantità positive
+        if amount <= 0:
+            raise ValueError(
+                f"Card amount must be positive: {amount}"
+            )
+
         # le carte infinite non hanno bisogno di copie aggiuntive
         if self.is_unlimited(card):
             return 0
@@ -74,6 +80,12 @@ class CardCollection:
     # rimuove una o più copie di una carta dalla collezione
     def remove_card(self, card, amount=1):
 
+        # accetto soltanto quantità positive
+        if amount <= 0:
+            raise ValueError(
+                f"Card amount must be positive: {amount}"
+            )
+
         # le carte di rarità 1 sono infinite e non possono essere perse
         if self.is_unlimited(card):
             return 0
@@ -94,3 +106,35 @@ class CardCollection:
 
         # restituisco il numero di copie realmente rimosse
         return removed_quantity
+
+    # prepara i dati della collezione per il salvataggio
+    def get_save_data(self):
+
+        return {
+            # salvo le quantità possedute delle carte
+            "card_quantities": self.card_quantities,
+
+            # converto il set in una lista perché JSON non supporta set()
+            "discovered_card_ids": sorted(
+                self.discovered_card_ids
+            )
+        }
+
+    # ricostruisce la collezione usando i dati di un salvataggio
+    def load_save_data(self, save_data):
+
+        # recupero le quantità, oppure un dizionario vuoto se mancano
+        self.card_quantities = dict(
+            save_data.get(
+                "card_quantities",
+                {}
+            )
+        )
+
+        # recupero le carte scoperte e riconverto la lista in un set
+        self.discovered_card_ids = set(
+            save_data.get(
+                "discovered_card_ids",
+                []
+            )
+        )

@@ -2,6 +2,8 @@ import pygame
 
 from screens.main_menu import MainMenu # serve per importare la classe MainMenu dal file main_menu.py
 from game.state import GameState # serve per importare la classe GameState dal file state.py
+# salva la collezione del giocatore
+from game.save_manager import save_card_collection
 
 class Game:
     def __init__(self):
@@ -52,5 +54,10 @@ class Game:
             pygame.display.flip() # disegna tutto quello che sta nel buffer
 
 
-        #chiude pygame
+        # salvo la collezione prima di chiudere il gioco
+        save_card_collection(
+            self.state.card_collection
+        )
+
+        # chiudo Pygame
         pygame.quit()

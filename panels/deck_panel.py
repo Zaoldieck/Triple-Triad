@@ -72,6 +72,36 @@ class DeckPanel(Panel):
             ACTIVE_CARD_SETS
         )
 
+        # TEST TEMPORANEO: assegno 3 copie di Zell al giocatore
+        #for card in self.cards:
+        #
+        #    if card.card_id == "ff8_zell":
+        #        self.state.card_collection.add_card(
+        #            card,
+        #            150
+        #        )
+        #        break
+
+        # TEST TEMPORANEO: ottengo Zell e poi perdo tutte le copie
+        '''for card in self.cards:
+
+            if card.card_id == "ff8_zell":
+
+                # Zell viene scoperto ottenendone 3 copie
+                self.state.card_collection.add_card(
+                    card,
+                    3
+                )
+
+                # provo a rimuoverne più di quante ne possiedo
+                self.state.card_collection.remove_card(
+                    card,
+                    10
+                )
+
+                break'''
+
+
         # superficie che conterrà l'anteprima della carta
         self.card_preview = None
 

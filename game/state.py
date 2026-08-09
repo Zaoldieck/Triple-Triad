@@ -1,5 +1,8 @@
 # gestisce le carte possedute dal giocatore
 from game.card_collection import CardCollection
+# carica la collezione salvata dal giocatore
+from game.save_manager import load_card_collection
+
 
 # classe che contiene lo stato globale del gioco
 class GameState:
@@ -15,12 +18,15 @@ class GameState:
         # collezione delle carte possedute dal giocatore
         self.card_collection = CardCollection()
 
+        # carico l'eventuale collezione salvata
+        load_card_collection(
+            self.card_collection
+        )
 
         # TEST TEMPORANEO: Zell è stato scoperto, ma non è posseduto
         #self.card_collection.discovered_card_ids.add(
         #    "ff8_zell"
         #)
-
 
         #indica se il gioco deve rimanere aperto
         self.running = True
