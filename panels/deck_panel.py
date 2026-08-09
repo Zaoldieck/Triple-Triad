@@ -63,6 +63,26 @@ class DeckPanel(Panel):
         # dato che ci sono piu pagine di carte
         self.current_page = 0
 
+        # VARIABILI PER ANIMAZIONE CAMBIO PAGINA
+
+        # indica se è in corso l'animazione del cambio pagina
+        self.page_animating = False
+
+        # fase dell'animazione: uscita oppure entrata
+        self.page_animation_phase = None
+
+        # direzione dell'animazione: -1 sinistra, 1 destra
+        self.page_animation_direction = 0
+
+        # spostamento orizzontale applicato ai contenuti
+        self.page_animation_offset = 0.0
+
+        # pagina che verrà mostrata al termine dell'animazione
+        self.target_page = 0
+
+        # velocità dello scorrimento orizzontale
+        self.page_animation_speed = 6
+
         # numero carte per pagina
         self.cards_per_page = 11
 
@@ -71,39 +91,6 @@ class DeckPanel(Panel):
             "data/cards.json",
             ACTIVE_CARD_SETS
         )
-
-        # TEST TEMPORANEO: assegno 3 copie di Zell al giocatore
-        #for card in self.cards:
-        #
-        #    if card.card_id == "ff8_zell":
-        #        self.state.card_collection.add_card(
-        #            card,
-        #            150
-        #        )
-        #        break
-
-        # TEST TEMPORANEO: ottengo Zell e poi perdo tutte le copie
-        '''for card in self.cards:
-
-            if card.card_id == "ff8_zell":
-
-                # Zell viene scoperto ottenendone 3 copie
-                self.state.card_collection.add_card(
-                    card,
-                    3
-                )
-
-                # provo a rimuoverne più di quante ne possiedo
-                self.state.card_collection.remove_card(
-                    card,
-                    10
-                )
-
-                break'''
-
-
-        # superficie che conterrà l'anteprima della carta
-        self.card_preview = None
 
         # superficie che conterrà l'anteprima della carta selezionata
         self.card_preview = None
@@ -191,7 +178,85 @@ class DeckPanel(Panel):
         # salvo la carta e lo stato mostrati
         self.previewed_card_key = preview_key
 
+    # avvia il cambio pagina nella direzione richiesta
+    def change_page(self, direction):
 
+        # ignoro nuovi cambi mentre l'animazione è in corso
+        if self.page_animating:
+            return
+
+        # evito il cambio se esiste una sola pagina
+        if self.total_pages <= 1:
+            return
+
+        # calcolo la pagina che dovrà entrare
+        self.target_page = (
+            self.current_page + direction
+        ) % self.total_pages
+
+        # salvo la direzione richiesta
+        self.page_animation_direction = direction
+
+        # l'animazione comincia facendo uscire la pagina attuale
+        self.page_animation_phase = "out"
+        self.page_animation_offset = 0.0
+        self.page_animating = True
+
+    # aggiorna lo scorrimento orizzontale delle righe
+    def update_page_animation(self):
+
+        # non faccio nulla se non è in corso un'animazione
+        if not self.page_animating:
+            return
+
+        # larghezza da percorrere per uscire dall'area della lista
+        animation_distance = 400
+
+        # sposto le righe nella direzione dell'animazione
+        self.page_animation_offset -= (
+            self.page_animation_direction
+            * self.page_animation_speed
+        )
+
+        # la pagina attuale ha terminato l'uscita
+        if (
+            self.page_animation_phase == "out"
+            and abs(self.page_animation_offset) >= animation_distance
+        ):
+
+            # applico la nuova pagina
+            self.current_page = self.target_page
+
+            # seleziono la prima carta della nuova pagina
+            self.selected_card = 0
+
+            # faccio partire la nuova pagina dal lato opposto
+            self.page_animation_offset = (
+                self.page_animation_direction
+                * animation_distance
+            )
+
+            # comincia la fase di entrata
+            self.page_animation_phase = "in"
+
+        # la nuova pagina ha raggiunto la posizione centrale
+        elif self.page_animation_phase == "in":
+
+            reached_center = (
+                self.page_animation_direction == 1
+                and self.page_animation_offset <= 0
+            ) or (
+                self.page_animation_direction == -1
+                and self.page_animation_offset >= 0
+            )
+
+            if reached_center:
+
+                # termino l'animazione
+                self.page_animation_offset = 0.0
+                self.page_animating = False
+                self.page_animation_phase = None
+                self.page_animation_direction = 0
 
     def handle_events(self, event):
 
@@ -214,58 +279,50 @@ class DeckPanel(Panel):
                 self.state.close_panel()
 
             # sposto la selezione soltanto tra gli slot contenenti carte (quindi non sugli slot vuoti)
-            elif event.key == pygame.K_UP and cards_on_page > 0:
+            elif (
+                event.key == pygame.K_UP
+                and cards_on_page > 0
+                and not self.page_animating
+            ):
                 self.selected_card = (
                     self.selected_card - 1
                 ) % cards_on_page
 
-            elif event.key == pygame.K_DOWN and cards_on_page > 0:
+            elif (
+                event.key == pygame.K_DOWN
+                and cards_on_page > 0
+                and not self.page_animating
+            ):
                 self.selected_card = (
                     self.selected_card + 1
                 ) % cards_on_page
 
 
-            # cambio pagina con le frecce sinistra e destra
+            # pagina precedente
             elif event.key == pygame.K_LEFT:
-                self.current_page = (
-                    self.current_page - 1
-                ) % self.total_pages
+                self.change_page(-1)
 
-                # seleziono la prima carta della nuova pagina
-                self.selected_card = 0
-
+            # pagina successiva
             elif event.key == pygame.K_RIGHT:
-                self.current_page = (
-                    self.current_page + 1
-                ) % self.total_pages
-
-                # seleziono la prima carta della nuova pagina
-                self.selected_card = 0
+                self.change_page(1)
 
         # cambio pagina con la rotella del mouse
         if event.type == pygame.MOUSEWHEEL:
 
             # rotella verso l'alto: pagina precedente
             if event.y > 0:
-                self.current_page = (
-                    self.current_page - 1
-                ) % self.total_pages
-
-                # seleziono la prima carta della nuova pagina
-                self.selected_card = 0
+                self.change_page(-1)
 
             # rotella verso il basso: pagina successiva
             elif event.y < 0:
-                self.current_page = (
-                    self.current_page + 1
-                ) % self.total_pages
+                self.change_page(1)
 
-                # seleziono la prima carta della nuova pagina
-                self.selected_card = 0
-
-        # se il mouse si muove
-        if event.type == pygame.MOUSEMOTION:
-
+        # ignoro l'hover mentre le righe stanno scorrendo
+        if (
+            event.type == pygame.MOUSEMOTION
+            and not self.page_animating
+        ):
+            
             # controllo tutti i rettangoli degli slot
             for i, slot_rect in enumerate(self.slot_rects):
 
@@ -275,7 +332,7 @@ class DeckPanel(Panel):
                     and slot_rect.collidepoint(event.pos)
                 ):
                     self.selected_card = i
-                    
+
         if event.type == pygame.MOUSEBUTTONDOWN:
 
             # tasto destro del mouse
@@ -284,6 +341,9 @@ class DeckPanel(Panel):
 
     # logica del pannello                
     def update(self):
+
+        # aggiorno l'animazione del cambio pagina
+        self.update_page_animation()
 
         # aggiorno l'anteprima della carta selezionata
         self.update_card_preview()
@@ -341,7 +401,17 @@ class DeckPanel(Panel):
             start_index:start_index + self.cards_per_page
         ]
 
-        for i in range(11):
+        # converto l'offset dell'animazione in pixel interi
+        row_offset = int(self.page_animation_offset)
+
+        # salvo l'area di disegno attuale
+        previous_clip = screen.get_clip()
+
+        # impedisco alle righe animate di uscire dall'area della lista
+        screen.set_clip(list_rect)
+
+        # creo uno slot per ogni carta prevista nella pagina
+        for i in range(self.cards_per_page):
             slot_rect = pygame.Rect(
                 list_rect.x + 10,
                 list_rect.y + 10 + i * (slot_height + slot_spacing),
@@ -351,7 +421,18 @@ class DeckPanel(Panel):
 
             self.slot_rects.append(slot_rect)
 
-            pygame.draw.rect(screen, (50,50,50), slot_rect)
+            # creo una copia dello slot spostata dall'animazione
+            draw_slot_rect = slot_rect.move(
+                row_offset,
+                0
+            )
+
+            # disegno lo slot nella posizione animata
+            pygame.draw.rect(
+                screen,
+                (50, 50, 50),
+                draw_slot_rect
+            )
 
 
             # se nello slot è presente una carta, mostro nome e quantità
@@ -401,7 +482,10 @@ class DeckPanel(Panel):
 
                 # posiziono il nome all'interno dello slot
                 card_name_rect = card_name.get_rect(
-                    midleft=(slot_rect.x + 15, slot_rect.centery)
+                    midleft=(
+                        draw_slot_rect.x + 15,
+                        draw_slot_rect.centery
+                    )
                 )
 
                 # disegno il nome della carta
@@ -416,20 +500,40 @@ class DeckPanel(Panel):
 
                 # posiziono la quantità sul lato destro dello slot
                 quantity_rect = quantity_surface.get_rect(
-                    midright=(slot_rect.right - 15, slot_rect.centery)
+                    midright=(
+                        draw_slot_rect.right - 15,
+                        draw_slot_rect.centery
+                    )
                 )
 
                 # disegno la quantità posseduta
                 screen.blit(quantity_surface, quantity_rect)
 
 
-            # disegno la manina accanto allo slot selezionato
-            if i == self.selected_card:
-                hand_rect = self.hand_cursor.get_rect()
-                hand_rect.centery = slot_rect.centery
-                hand_rect.right = slot_rect.left - 5
+        # ripristino l'area di disegno precedente
+        screen.set_clip(previous_clip)
 
-                screen.blit(self.hand_cursor, hand_rect)
+        # durante l'animazione la manina rimane nascosta
+        if (
+            not self.page_animating
+            and self.selected_card < len(self.slot_rects)
+        ):
+
+            # recupero lo slot selezionato nella sua posizione fissa
+            selected_slot_rect = self.slot_rects[
+                self.selected_card
+            ]
+
+            # preparo la posizione della manina
+            hand_rect = self.hand_cursor.get_rect()
+            hand_rect.centery = selected_slot_rect.centery
+            hand_rect.right = selected_slot_rect.left - 5
+
+            # disegno la manina
+            screen.blit(
+                self.hand_cursor,
+                hand_rect
+            )  
 
         #preparo il testo con il numero della pagina corrente
         page_text = self.info_font.render(
