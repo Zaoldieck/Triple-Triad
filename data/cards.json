@@ -10,5 +10,17 @@
         "rarity": 1,
         "element": null,
         "card_sets": ["ff8"]
+    },
+    {
+    "card_id": "ff8_funguar",
+    "name": "Funguar",
+    "image_path": "assets/images/cards/ff8/ff8_funguar.png",
+    "top": 5,
+    "right": 1,
+    "bottom": 1,
+    "left": 3,
+    "rarity": 1,
+    "element": null,
+    "card_sets": ["ff8"]
     }
 ]

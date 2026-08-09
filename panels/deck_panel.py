@@ -59,37 +59,85 @@ class DeckPanel(Panel):
         # superficie che conterrà l'anteprima della carta
         self.card_preview = None
 
-        # costruisco l'anteprima soltanto se esiste almeno una carta
-        if self.cards:
+        # superficie che conterrà l'anteprima della carta selezionata
+        self.card_preview = None
 
-            # costruisco la prima carta usando lo sfondo blu
-            self.card_preview = render_card(
-                self.cards[0],
-                "blue"
-            )
-
-            # ridimensiono la carta mantenendo le proporzioni originali
-            self.card_preview = pygame.transform.smoothscale(
-                self.card_preview,
-                (280, 354)
-            )
-
+        # indice della carta attualmente mostrata nell'anteprima
+        self.previewed_card_index = None
 
         # lista che contiene i rettangoli dei 10 slot delle carte
         self.slot_rects = []
 
+
+    # aggiorna l'anteprima quando cambia la carta selezionata  
+    def update_card_preview(self):
+
+        # calcolo l'indice della carta nell'intero catalogo
+        card_index = (
+            self.current_page * self.cards_per_page
+            + self.selected_card
+        )
+
+        # se lo slot selezionato è vuoto, rimuovo l'anteprima
+        if card_index >= len(self.cards):
+            self.card_preview = None
+            self.previewed_card_index = None
+            return
+
+        # evito di ricostruire la stessa carta a ogni frame
+        if card_index == self.previewed_card_index:
+            return
+
+        # recupero la carta selezionata
+        selected_card = self.cards[card_index]
+
+        # costruisco la carta usando lo sfondo blu
+        self.card_preview = render_card(
+            selected_card,
+            "blue"
+        )
+
+        # ridimensiono l'anteprima mantenendo le proporzioni
+        self.card_preview = pygame.transform.smoothscale(
+            self.card_preview,
+            (280, 354)
+        )
+
+        # salvo l'indice della carta mostrata
+        self.previewed_card_index = card_index
+
+
+
     def handle_events(self, event):
 
+        # calcolo quante carte sono presenti nella pagina corrente
+        start_index = self.current_page * self.cards_per_page
+
+        cards_on_page = max(
+            0,
+            min(
+                self.cards_per_page,
+                len(self.cards) - start_index
+            )
+        )
+
+
+
+        
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 self.state.close_panel()
 
-            #faccio spostare la manina su e giu nei 10 slots del pannello
-            elif event.key == pygame.K_UP:
-                self.selected_card = (self.selected_card - 1) % 10
+            # sposto la selezione soltanto tra gli slot contenenti carte (quindi non sugli slot vuoti)
+            elif event.key == pygame.K_UP and cards_on_page > 0:
+                self.selected_card = (
+                    self.selected_card - 1
+                ) % cards_on_page
 
-            elif event.key == pygame.K_DOWN:
-                self.selected_card = (self.selected_card + 1) % 10
+            elif event.key == pygame.K_DOWN and cards_on_page > 0:
+                self.selected_card = (
+                    self.selected_card + 1
+                ) % cards_on_page
 
 
             # pagina sinistra e destra del pannello deck
@@ -120,12 +168,18 @@ class DeckPanel(Panel):
             # controllo tutti i rettangoli degli slot
             for i, slot_rect in enumerate(self.slot_rects):
 
-                # se il mouse si trova sopra uno slot, lo seleziono
-                if slot_rect.collidepoint(event.pos):
+                # seleziono lo slot soltanto se contiene una carta
+                if (
+                    i < cards_on_page
+                    and slot_rect.collidepoint(event.pos)
+                ):
                     self.selected_card = i
 
     # logica del pannello                
     def update(self):
+
+        # aggiorno l'anteprima della carta selezionata
+        self.update_card_preview()
 
         if self.opening:
 
