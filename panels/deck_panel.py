@@ -4,8 +4,8 @@ from panels.panel import Panel
 from game.card_loader import load_cards
 # funzione che costruisce graficamente una carta
 from renderers.card_renderer import render_card
-# set di carte abilitati nella versione corrente
-from config import ACTIVE_CARD_SETS
+# set di carte abilitati nella versione corrente (e sfondo carta relativo)
+from config import ACTIVE_CARD_SETS, CARD_BACK_PATH
 
 class DeckPanel(Panel):
 
@@ -46,6 +46,17 @@ class DeckPanel(Panel):
         # ridimensiono il cursore manina
         self.hand_cursor = pygame.transform.smoothscale(self.hand_cursor, (64,64))
 
+        # carico l'immagine del retro della carta
+        self.card_back = pygame.image.load(
+            CARD_BACK_PATH
+        ).convert_alpha()
+
+        # ridimensiono il retro come l'anteprima delle carte
+        self.card_back = pygame.transform.smoothscale(
+            self.card_back,
+            (280, 354)
+        )
+
         # indice dello slot attualmente selezionato
         self.selected_card = 0
 
@@ -67,14 +78,14 @@ class DeckPanel(Panel):
         # superficie che conterrà l'anteprima della carta selezionata
         self.card_preview = None
 
-        # indice della carta attualmente mostrata nell'anteprima
-        self.previewed_card_index = None
+        # identifica la carta e lo stato mostrati nell'anteprima
+        self.previewed_card_key = None
 
         # lista che contiene i rettangoli dei 10 slot delle carte
         self.slot_rects = []
 
 
-    # aggiorna l'anteprima quando cambia la carta selezionata  
+    # aggiorna l'anteprima quando cambia la carta selezionata
     def update_card_preview(self):
 
         # calcolo l'indice della carta nell'intero catalogo
@@ -86,30 +97,66 @@ class DeckPanel(Panel):
         # se lo slot selezionato è vuoto, rimuovo l'anteprima
         if card_index >= len(self.cards):
             self.card_preview = None
-            self.previewed_card_index = None
-            return
-
-        # evito di ricostruire la stessa carta a ogni frame
-        if card_index == self.previewed_card_index:
+            self.previewed_card_key = None
             return
 
         # recupero la carta selezionata
         selected_card = self.cards[card_index]
 
-        # costruisco la carta usando lo sfondo blu
-        self.card_preview = render_card(
-            selected_card,
-            "blue"
+        # recupero scoperta e quantità della carta
+        is_discovered = self.state.card_collection.is_discovered(
+            selected_card
         )
 
-        # ridimensiono l'anteprima mantenendo le proporzioni
-        self.card_preview = pygame.transform.smoothscale(
-            self.card_preview,
-            (280, 354)
+        quantity = self.state.card_collection.get_quantity(
+            selected_card
         )
 
-        # salvo l'indice della carta mostrata
-        self.previewed_card_index = card_index
+        # determino lo stato grafico dell'anteprima
+        if not is_discovered:
+            preview_state = "hidden"
+
+        elif quantity == 0:
+            preview_state = "discovered_empty"
+
+        else:
+            preview_state = "owned"
+
+        # creo una chiave composta da carta selezionata e stato grafico
+        preview_key = (
+            card_index,
+            preview_state
+        )
+
+        # evito di ricostruire la stessa anteprima a ogni frame
+        if preview_key == self.previewed_card_key:
+            return
+
+        # una carta mai scoperta mostra soltanto il retro
+        if preview_state == "hidden":
+            self.card_preview = self.card_back
+
+        # una carta scoperta mostra il proprio fronte
+        else:
+            self.card_preview = render_card(
+                selected_card,
+                "blue"
+            )
+
+            # se la quantità è zero, trasformo la carta in bianco e nero
+            if preview_state == "discovered_empty":
+                self.card_preview = pygame.transform.grayscale(
+                    self.card_preview
+                )
+
+            # ridimensiono l'anteprima mantenendo le proporzioni
+            self.card_preview = pygame.transform.smoothscale(
+                self.card_preview,
+                (280, 354)
+            )
+
+        # salvo la carta e lo stato mostrati
+        self.previewed_card_key = preview_key
 
 
 
@@ -252,13 +299,46 @@ class DeckPanel(Panel):
             pygame.draw.rect(screen, (50,50,50), slot_rect)
 
 
-            # se nello slot è presente una carta, ne mostro il nome
+            # se nello slot è presente una carta, mostro nome e quantità
             if i < len(page_cards):
 
+                # recupero la carta presente nello slot
+                card = page_cards[i]
+
+                # controllo se la carta è stata scoperta almeno una volta
+                is_discovered = self.state.card_collection.is_discovered(card)
+
+                # recupero la quantità posseduta
+                quantity = self.state.card_collection.get_quantity(card)
+
+                # le carte di rarità 1 mostrano il simbolo dell'infinito
+                if quantity is None:
+                    quantity_text = "∞"
+                else:
+                    quantity_text = f"x{quantity}"
+
+                # mostro il nome vero soltanto se la carta è stata scoperta
+                if is_discovered:
+                    display_name = card.name
+                else:
+                    # sostituisco ogni lettera del nome con un punto interrogativo
+                    # mantenendo eventuali spazi, trattini e altri simboli
+                    display_name = "".join(
+                        "?" if character.isalpha() else character
+                        for character in card.name
+                    )
+
+                # le carte non possedute vengono mostrate in grigio
+                if quantity == 0:
+                    text_color = (140, 140, 140)
+                else:
+                    text_color = (255, 255, 255)
+
+                # preparo il nome visibile della carta
                 card_name = self.info_font.render(
-                    page_cards[i].name,
+                    display_name,
                     True,
-                    (255, 255, 255)
+                    text_color
                 )
 
                 # posiziono il nome all'interno dello slot
@@ -269,6 +349,20 @@ class DeckPanel(Panel):
                 # disegno il nome della carta
                 screen.blit(card_name, card_name_rect)
 
+                # preparo la quantità usando lo stesso colore del nome
+                quantity_surface = self.info_font.render(
+                    quantity_text,
+                    True,
+                    text_color
+                )
+
+                # posiziono la quantità sul lato destro dello slot
+                quantity_rect = quantity_surface.get_rect(
+                    midright=(slot_rect.right - 15, slot_rect.centery)
+                )
+
+                # disegno la quantità posseduta
+                screen.blit(quantity_surface, quantity_rect)
 
 
             # disegno la manina accanto allo slot selezionato

@@ -1,3 +1,6 @@
+# gestisce le carte possedute dal giocatore
+from game.card_collection import CardCollection
+
 # classe che contiene lo stato globale del gioco
 class GameState:
 
@@ -8,6 +11,16 @@ class GameState:
 
         # eventuale pannello aperto sopra una schermata
         self.current_panel = None  # pannello attualmente aperto (None se nessun pannello è aperto)
+
+        # collezione delle carte possedute dal giocatore
+        self.card_collection = CardCollection()
+
+
+        # TEST TEMPORANEO: Zell è stato scoperto, ma non è posseduto
+        #self.card_collection.discovered_card_ids.add(
+        #    "ff8_zell"
+        #)
+
 
         #indica se il gioco deve rimanere aperto
         self.running = True
