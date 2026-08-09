@@ -6,6 +6,9 @@ from game.card_loader import load_cards
 from renderers.card_renderer import render_card
 # set di carte abilitati nella versione corrente (e sfondo carta relativo)
 from config import ACTIVE_CARD_SETS, CARD_BACK_PATH, DEBUG_REVEAL_ALL_CARDS
+# cursore animato riutilizzabile
+from ui.animated_hand_cursor import AnimatedHandCursor
+
 
 class DeckPanel(Panel):
 
@@ -38,13 +41,10 @@ class DeckPanel(Panel):
         # font piu piccolo per info del deck
         self.info_font = pygame.font.SysFont("Arial", 24)
 
-        # carico l'immagine del cursore
-        self.hand_cursor = pygame.image.load(
+        # creo la manina animata del Deck
+        self.hand_cursor = AnimatedHandCursor(
             "assets/images/hand_cursor.png"
-        ).convert_alpha()
-
-        # ridimensiono il cursore manina
-        self.hand_cursor = pygame.transform.smoothscale(self.hand_cursor, (64,64))
+        )
 
         # carico l'immagine del retro della carta
         self.card_back = pygame.image.load(
@@ -524,16 +524,12 @@ class DeckPanel(Panel):
                 self.selected_card
             ]
 
-            # preparo la posizione della manina
-            hand_rect = self.hand_cursor.get_rect()
-            hand_rect.centery = selected_slot_rect.centery
-            hand_rect.right = selected_slot_rect.left - 5
-
-            # disegno la manina
-            screen.blit(
-                self.hand_cursor,
-                hand_rect
-            )  
+            # disegno la manina animata accanto allo slot selezionato
+            self.hand_cursor.draw(
+                screen,
+                selected_slot_rect,
+                gap=5
+            )
 
         #preparo il testo con il numero della pagina corrente
         page_text = self.info_font.render(

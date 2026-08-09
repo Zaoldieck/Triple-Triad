@@ -16,6 +16,55 @@ class Card:
         card_sets
     ):
 
+
+        # associo il nome di ogni lato al relativo valore
+        card_values = {
+            "top": top,
+            "right": right,
+            "bottom": bottom,
+            "left": left
+        }
+
+        # controllo che tutti i valori siano numeri interi da 1 a 10
+        for side, value in card_values.items():
+
+            if (
+                not isinstance(value, int)
+                or not 1 <= value <= 10
+            ):
+                raise ValueError(
+                    f"Invalid {side} value for "
+                    f"{card_id}: {value}"
+                )
+
+        # controllo che la rarità sia un numero intero da 1 a 10
+        if (
+            not isinstance(rarity, int)
+            or not 1 <= rarity <= 10
+        ):
+            raise ValueError(
+                f"Invalid rarity for {card_id}: {rarity}"
+            )
+
+        # elementi validi del Triple Triad di FFVIII
+        valid_elements = {
+            None,
+            "earth",
+            "fire",
+            "holy",
+            "ice",
+            "poison",
+            "thunder",
+            "water",
+            "wind"
+        }
+
+        # controllo che l'elemento sia valido
+        if element not in valid_elements:
+            raise ValueError(
+                f"Invalid element for {card_id}: {element}"
+            )
+
         # identificatore unico e permanente della carta
         self.card_id = card_id
 

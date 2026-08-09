@@ -10,4 +10,4 @@ CARD_BACK_PATH = (
 )
 
 # mostra temporaneamente tutte le carte durante lo sviluppo
-DEBUG_REVEAL_ALL_CARDS = False
+DEBUG_REVEAL_ALL_CARDS = True

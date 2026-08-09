@@ -1,5 +1,6 @@
 import pygame
-
+# cursore animato riutilizzabile
+from ui.animated_hand_cursor import AnimatedHandCursor
 from panels.panel import Panel
 
 
@@ -27,15 +28,9 @@ class ExitConfirmationPanel(Panel):
         self.message_font = pygame.font.SysFont("Arial", 30)
         self.option_font = pygame.font.SysFont("Arial", 28)
 
-        # carico l'immagine della manina
-        self.hand_cursor = pygame.image.load(
+        # creo la manina animata della conferma di uscita
+        self.hand_cursor = AnimatedHandCursor(
             "assets/images/hand_cursor.png"
-        ).convert_alpha()
-
-        # ridimensiono la manina
-        self.hand_cursor = pygame.transform.smoothscale(
-            self.hand_cursor,
-            (64, 64)
         )
 
         # opzioni disponibili
@@ -208,15 +203,9 @@ class ExitConfirmationPanel(Panel):
             # disegno la manina accanto all'opzione selezionata
             if i == self.selected_option:
 
-                hand_rect = self.hand_cursor.get_rect()
-
-                # centro verticalmente la manina rispetto al testo
-                hand_rect.centery = option_rect.centery
-
-                # posiziono la manina a sinistra dell'opzione
-                hand_rect.right = option_rect.left - 5
-
-                screen.blit(
-                    self.hand_cursor,
-                    hand_rect
+                # disegno la manina animata accanto all'opzione selezionata
+                self.hand_cursor.draw(
+                    screen,
+                    option_rect,
+                    gap=5
                 )

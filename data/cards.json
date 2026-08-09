@@ -132,6 +132,18 @@
         "card_sets": ["ff8"]
     },
     {
+        "card_id": "ff8_grat",
+        "name": "Grat",
+        "image_path": "assets/images/cards/ff8/ff8_grat.png",
+        "top": 7,
+        "right": 1,
+        "bottom": 3,
+        "left": 1,
+        "rarity": 2,
+        "element": null,
+        "card_sets": ["ff8"]
+    },
+    {
         "card_id": "ff8_gerogero",
         "name": "Gerogero",
         "image_path": "assets/images/cards/ff8/ff8_gerogero.png",
