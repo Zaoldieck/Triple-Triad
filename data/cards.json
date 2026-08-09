@@ -12,15 +12,63 @@
         "card_sets": ["ff8"]
     },
     {
-    "card_id": "ff8_funguar",
-    "name": "Funguar",
-    "image_path": "assets/images/cards/ff8/ff8_funguar.png",
-    "top": 5,
-    "right": 1,
-    "bottom": 1,
-    "left": 3,
-    "rarity": 1,
-    "element": null,
-    "card_sets": ["ff8"]
+        "card_id": "ff8_funguar",
+        "name": "Funguar",
+        "image_path": "assets/images/cards/ff8/ff8_funguar.png",
+        "top": 5,
+        "right": 1,
+        "bottom": 1,
+        "left": 3,
+        "rarity": 1,
+        "element": null,
+        "card_sets": ["ff8"]
+    },
+    {
+        "card_id": "ff8_gayla",
+        "name": "Gayla",
+        "image_path": "assets/images/cards/ff8/ff8_gayla.png",
+        "top": 2,
+        "right": 1,
+        "bottom": 4,
+        "left": 4,
+        "rarity": 1,
+        "element": "thunder",
+        "card_sets": ["ff8"]
+    },
+    {
+        "card_id": "ff8_gerogero",
+        "name": "Gerogero",
+        "image_path": "assets/images/cards/ff8/ff8_gerogero.png",
+        "top": 1,
+        "right": 8,
+        "bottom": 8,
+        "left": 3,
+        "rarity": 6,
+        "element": "poison",
+        "card_sets": ["ff8"]
+    },
+    {
+        "card_id": "ff8_carbuncle",
+        "name": "Carbuncle",
+        "image_path": "assets/images/cards/ff8/ff8_carbuncle.png",
+        "top": 8,
+        "right": 4,
+        "bottom": 10,
+        "left": 4,
+        "rarity": 9,
+        "element": null,
+        "card_sets": ["ff8"]
+    },
+    {
+        "card_id": "ff8_zell",
+        "name": "Zell",
+        "image_path": "assets/images/cards/ff8/ff8_zell.png",
+        "top": 8,
+        "right": 5,
+        "bottom": 10,
+        "left": 6,
+        "rarity": 10,
+        "element": null,
+        "card_sets": ["ff8"]
     }
 ]

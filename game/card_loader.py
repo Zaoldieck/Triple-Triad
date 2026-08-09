@@ -6,7 +6,7 @@ from game.card import Card
 
 
 # carica le carte presenti in un file JSON
-def load_cards(file_path):
+def load_cards(file_path, active_card_sets):
 
     # apro il file e converto il JSON in dati Python
     with open(file_path, "r", encoding="utf-8") as file:
@@ -18,6 +18,16 @@ def load_cards(file_path):
     # trasformo ogni carta del JSON in un oggetto Card
     for card_data in cards_data:
 
+        # controllo se la carta appartiene ad almeno un set abilitato
+        belongs_to_active_set = any(
+            card_set in active_card_sets
+            for card_set in card_data["card_sets"]
+        )
+
+        # ignoro la carta se non appartiene ai set abilitati
+        if not belongs_to_active_set:
+            continue
+        
         card = Card(
             card_id=card_data["card_id"],
             name=card_data["name"],

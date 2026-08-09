@@ -4,6 +4,8 @@ from panels.panel import Panel
 from game.card_loader import load_cards
 # funzione che costruisce graficamente una carta
 from renderers.card_renderer import render_card
+# set di carte abilitati nella versione corrente
+from config import ACTIVE_CARD_SETS
 
 class DeckPanel(Panel):
 
@@ -53,8 +55,11 @@ class DeckPanel(Panel):
         # numero carte per pagina
         self.cards_per_page = 10
 
-        # "lista" che contiene tutte le carte caricate
-        self.cards = load_cards("data/cards.json")
+        # carico soltanto le carte appartenenti ai set abilitati
+        self.cards = load_cards(
+            "data/cards.json",
+            ACTIVE_CARD_SETS
+        )
 
         # superficie che conterrà l'anteprima della carta
         self.card_preview = None

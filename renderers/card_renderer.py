@@ -5,8 +5,8 @@ CARD_WIDTH = 416
 CARD_HEIGHT = 526
 CARD_SIZE = (CARD_WIDTH, CARD_HEIGHT)
 
-NUMBER_SIZE = (40, 40)
-ELEMENT_SIZE = (52, 52)
+NUMBER_SIZE = (48, 48)
+ELEMENT_SIZE = (80, 80)
 
 
 # restituisce il percorso del bordo corretto in base alla rarità
@@ -152,10 +152,10 @@ def render_card(card, background_color):
 
     # associo ogni valore alla sua posizione sulla carta
     number_data = [
-        (card.top, (48, 20)),
-        (card.right, (78, 50)),
-        (card.bottom, (48, 80)),
-        (card.left, (18, 50))
+        (card.top, (49, 22)),
+        (card.right, (83, 56)),
+        (card.bottom, (49, 90)),
+        (card.left, (15, 56))
     ]
 
     # carico e disegno i quattro valori della carta
@@ -197,8 +197,8 @@ def render_card(card, background_color):
 
         # calcolo la posizione nell'angolo in alto a destra
         element_position = (
-            CARD_WIDTH - ELEMENT_SIZE[0] - 18,
-            18
+            CARD_WIDTH - ELEMENT_SIZE[0] - 26,
+            23
         )
 
         # sovrappongo l'icona elementale alla carta
