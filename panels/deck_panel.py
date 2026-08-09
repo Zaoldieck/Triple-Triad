@@ -1,5 +1,9 @@
 import pygame
 from panels.panel import Panel
+#funzione che carica le carte dal file JSON
+from game.card_loader import load_cards
+# funzione che costruisce graficamente una carta
+from renderers.card_renderer import render_card
 
 class DeckPanel(Panel):
 
@@ -50,7 +54,26 @@ class DeckPanel(Panel):
         self.cards_per_page = 10
 
         # "lista" che contiene tutte le carte caricate
-        self.cards = []
+        self.cards = load_cards("data/cards.json")
+
+        # superficie che conterrà l'anteprima della carta
+        self.card_preview = None
+
+        # costruisco l'anteprima soltanto se esiste almeno una carta
+        if self.cards:
+
+            # costruisco la prima carta usando lo sfondo blu
+            self.card_preview = render_card(
+                self.cards[0],
+                "blue"
+            )
+
+            # ridimensiono la carta mantenendo le proporzioni originali
+            self.card_preview = pygame.transform.smoothscale(
+                self.card_preview,
+                (280, 354)
+            )
+
 
         # lista che contiene i rettangoli dei 10 slot delle carte
         self.slot_rects = []
@@ -149,6 +172,14 @@ class DeckPanel(Panel):
         # svuoto la lista prima di ricreare i rettangoli degli slot
         self.slot_rects = []
 
+        # calcolo l'indice della prima carta della pagina corrente
+        start_index = self.current_page * self.cards_per_page
+
+        # estraggo solamente le carte appartenenti alla pagina corrente
+        page_cards = self.cards[
+            start_index:start_index + self.cards_per_page
+        ]
+
         for i in range(10):
             slot_rect = pygame.Rect(
                 list_rect.x + 10,
@@ -160,6 +191,26 @@ class DeckPanel(Panel):
             self.slot_rects.append(slot_rect)
 
             pygame.draw.rect(screen, (50,50,50), slot_rect)
+
+
+            # se nello slot è presente una carta, ne mostro il nome
+            if i < len(page_cards):
+
+                card_name = self.info_font.render(
+                    page_cards[i].name,
+                    True,
+                    (255, 255, 255)
+                )
+
+                # posiziono il nome all'interno dello slot
+                card_name_rect = card_name.get_rect(
+                    midleft=(slot_rect.x + 15, slot_rect.centery)
+                )
+
+                # disegno il nome della carta
+                screen.blit(card_name, card_name_rect)
+
+
 
             # disegno la manina accanto allo slot selezionato
             if i == self.selected_card:
@@ -184,13 +235,16 @@ class DeckPanel(Panel):
         #disegno il numero sulla pagina
         screen.blit(page_text,page_text_rect)
 
-        #testo di prova
-        #text = self.font.render("Deck Panel - press ESC", True, (255, 255, 255))
+        # disegno l'anteprima della carta nella parte destra del pannello
+        if self.card_preview is not None:
 
-        #text_x = (self.width - text.get_width()) // 2
-        #text_y = (self.height - text.get_height()) // 2
+            # centro l'anteprima nella parte destra
+            preview_rect = self.card_preview.get_rect(
+                center=(x + 665, y + 300)
+            )
 
-        #screen.blit(text, (text_x, text_y))                
+            # disegno la carta completa
+            screen.blit(self.card_preview, preview_rect)               
 
     @property
     def total_pages(self):
