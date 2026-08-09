@@ -29,6 +29,9 @@ class DeckPanel(Panel):
         # font 
         self.font = pygame.font.SysFont("Arial", 40)
 
+        # font piu piccolo per info del deck
+        self.info_font = pygame.font.SysFont("Arial", 24)
+
         # carico l'immagine del cursore
         self.hand_cursor = pygame.image.load(
             "assets/images/hand_cursor.png"
@@ -39,6 +42,12 @@ class DeckPanel(Panel):
 
         # indice dello slot attualmente selezionato
         self.selected_card = 0
+
+        # dato che ci sono piu pagine di carte
+        self.current_page = 0
+
+        # numero pagine
+        self.total_pages = 10
 
         # lista che contiene i rettangoli dei 10 slot delle carte
         self.slot_rects = []
@@ -55,6 +64,29 @@ class DeckPanel(Panel):
 
             elif event.key == pygame.K_DOWN:
                 self.selected_card = (self.selected_card + 1) % 10
+
+
+            # pagina sinistra e destra del pannello deck
+            elif event.key == pygame.K_LEFT:
+                self.current_page = (self.current_page - 1) % self.total_pages
+
+            elif event.key == pygame.K_RIGHT:
+                self.current_page = (self.current_page + 1) % self.total_pages
+
+        # evento rotella del mouse
+        if event.type == pygame.MOUSEWHEEL:
+
+            # rotella verso l'alto 
+            if event.y > 0:
+                self.current_page = (
+                    self.current_page - 1
+                ) % self.total_pages
+
+            # rotella verso il basso 
+            if event.y < 0:
+                self.current_page = (
+                    self.current_page + 1
+                ) % self.total_pages
 
         # se il mouse si muove
         if event.type == pygame.MOUSEMOTION:
@@ -133,11 +165,30 @@ class DeckPanel(Panel):
                 hand_rect.right = slot_rect.left - 5
 
                 screen.blit(self.hand_cursor, hand_rect)
-        
+
+        #preparo il testo con il numero della pagina corrente
+        page_text = self.info_font.render(
+            f"Page {self.current_page + 1} / {self.total_pages}",
+            True,
+            (255, 255, 255)
+        )
+
+        #posiziono il numero della pagina nella parte destra del pannello
+        page_text_rect = page_text.get_rect(
+            center=(x + 665, y + 30)
+        )
+
+        #disegno il numero sulla pagina
+        screen.blit(page_text,page_text_rect)
+
+
+
+
+
         #testo di prova
-        text = self.font.render("Deck Panel - press ESC", True, (255, 255, 255))
+        #text = self.font.render("Deck Panel - press ESC", True, (255, 255, 255))
 
-        text_x = (self.width - text.get_width()) // 2
-        text_y = (self.height - text.get_height()) // 2
+        #text_x = (self.width - text.get_width()) // 2
+        #text_y = (self.height - text.get_height()) // 2
 
-        screen.blit(text, (text_x, text_y))                
+        #screen.blit(text, (text_x, text_y))                
