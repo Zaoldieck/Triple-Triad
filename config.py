@@ -8,3 +8,6 @@ CARD_BACK_PATH = (
     "assets/images/cards/ff8/"
     "ff8_card_back.png"
 )
+
+# mostra temporaneamente tutte le carte durante lo sviluppo
+DEBUG_REVEAL_ALL_CARDS = False

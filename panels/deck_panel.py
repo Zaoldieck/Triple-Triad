@@ -5,7 +5,7 @@ from game.card_loader import load_cards
 # funzione che costruisce graficamente una carta
 from renderers.card_renderer import render_card
 # set di carte abilitati nella versione corrente (e sfondo carta relativo)
-from config import ACTIVE_CARD_SETS, CARD_BACK_PATH
+from config import ACTIVE_CARD_SETS, CARD_BACK_PATH, DEBUG_REVEAL_ALL_CARDS
 
 class DeckPanel(Panel):
 
@@ -64,7 +64,7 @@ class DeckPanel(Panel):
         self.current_page = 0
 
         # numero carte per pagina
-        self.cards_per_page = 10
+        self.cards_per_page = 11
 
         # carico soltanto le carte appartenenti ai set abilitati
         self.cards = load_cards(
@@ -111,7 +111,7 @@ class DeckPanel(Panel):
         # identifica la carta e lo stato mostrati nell'anteprima
         self.previewed_card_key = None
 
-        # lista che contiene i rettangoli dei 10 slot delle carte
+        # lista che contiene i rettangoli degli slot delle carte
         self.slot_rects = []
 
 
@@ -133,9 +133,12 @@ class DeckPanel(Panel):
         # recupero la carta selezionata
         selected_card = self.cards[card_index]
 
-        # recupero scoperta e quantità della carta
-        is_discovered = self.state.card_collection.is_discovered(
-            selected_card
+        # durante lo sviluppo posso mostrare tutte le anteprime
+        is_discovered = (
+            DEBUG_REVEAL_ALL_CARDS
+            or self.state.card_collection.is_discovered(
+                selected_card
+            )
         )
 
         quantity = self.state.card_collection.get_quantity(
@@ -146,7 +149,7 @@ class DeckPanel(Panel):
         if not is_discovered:
             preview_state = "hidden"
 
-        elif quantity == 0:
+        elif quantity == 0 and not DEBUG_REVEAL_ALL_CARDS:
             preview_state = "discovered_empty"
 
         else:
@@ -301,9 +304,9 @@ class DeckPanel(Panel):
         # area per la lista delle carte, disegna
         pygame.draw.rect(screen, (70, 70, 70), list_rect)
 
-        # creo i 10 spazi per le carte della pagina
-        slot_height = 42
-        slot_spacing = 5
+        # creo i 11 spazi per le carte della pagina
+        slot_height = 39
+        slot_spacing = 4
 
         # svuoto la lista prima di ricreare i rettangoli degli slot
         self.slot_rects = []
@@ -316,7 +319,7 @@ class DeckPanel(Panel):
             start_index:start_index + self.cards_per_page
         ]
 
-        for i in range(10):
+        for i in range(11):
             slot_rect = pygame.Rect(
                 list_rect.x + 10,
                 list_rect.y + 10 + i * (slot_height + slot_spacing),
@@ -335,8 +338,11 @@ class DeckPanel(Panel):
                 # recupero la carta presente nello slot
                 card = page_cards[i]
 
-                # controllo se la carta è stata scoperta almeno una volta
-                is_discovered = self.state.card_collection.is_discovered(card)
+                # durante lo sviluppo posso mostrare anche le carte non scoperte
+                is_discovered = (
+                    DEBUG_REVEAL_ALL_CARDS
+                    or self.state.card_collection.is_discovered(card)
+                )
 
                 # recupero la quantità posseduta
                 quantity = self.state.card_collection.get_quantity(card)
@@ -358,8 +364,8 @@ class DeckPanel(Panel):
                         for character in card.name
                     )
 
-                # le carte non possedute vengono mostrate in grigio
-                if quantity == 0:
+                # in modalità debug mostro tutte le carte normalmente
+                if quantity == 0 and not DEBUG_REVEAL_ALL_CARDS:
                     text_color = (140, 140, 140)
                 else:
                     text_color = (255, 255, 255)
