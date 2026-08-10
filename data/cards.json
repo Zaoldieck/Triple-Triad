@@ -660,6 +660,54 @@
         "card_sets": ["ff8"]
     },
     {
+        "card_id": "ff8_fuijin_raijin",
+        "name": "Fuijin & Raijin",
+        "image_path": "assets/images/cards/ff8/ff8_fuijin_raijin.png",
+        "top": 2,
+        "right": 8,
+        "bottom": 8,
+        "left": 4,
+        "rarity": 6,
+        "element": null,
+        "card_sets": ["ff8"]
+    },
+    {
+        "card_id": "ff8_elvoret",
+        "name": "Elvoret",
+        "image_path": "assets/images/cards/ff8/ff8_elvoret.png",
+        "top": 7,
+        "right": 8,
+        "bottom": 3,
+        "left": 4,
+        "rarity": 6,
+        "element": "wind",
+        "card_sets": ["ff8"]
+    },
+    {
+        "card_id": "ff8_x_atm092",
+        "name": "X-ATM092",
+        "image_path": "assets/images/cards/ff8/ff8_x_atm092.png",
+        "top": 4,
+        "right": 8,
+        "bottom": 7,
+        "left": 3,
+        "rarity": 6,
+        "element": null,
+        "card_sets": ["ff8"]
+    },
+    {
+        "card_id": "ff8_granaldo",
+        "name": "Granaldo",
+        "image_path": "assets/images/cards/ff8/ff8_granaldo.png",
+        "top": 7,
+        "right": 2,
+        "bottom": 8,
+        "left": 5,
+        "rarity": 6,
+        "element": null,
+        "card_sets": ["ff8"]
+    },
+    {
         "card_id": "ff8_gerogero",
         "name": "Gerogero",
         "image_path": "assets/images/cards/ff8/ff8_gerogero.png",
@@ -669,6 +717,78 @@
         "left": 3,
         "rarity": 6,
         "element": "poison",
+        "card_sets": ["ff8"]
+    },
+    {
+        "card_id": "ff8_iguion",
+        "name": "Iguion",
+        "image_path": "assets/images/cards/ff8/ff8_iguion.png",
+        "top": 8,
+        "right": 2,
+        "bottom": 8,
+        "left": 2,
+        "rarity": 6,
+        "element": null,
+        "card_sets": ["ff8"]
+    },
+    {
+        "card_id": "ff8_abadon",
+        "name": "Abadon",
+        "image_path": "assets/images/cards/ff8/ff8_abadon.png",
+        "top": 6,
+        "right": 8,
+        "bottom": 4,
+        "left": 5,
+        "rarity": 6,
+        "element": null,
+        "card_sets": ["ff8"]
+    },
+    {
+        "card_id": "ff8_trauma",
+        "name": "Trauma",
+        "image_path": "assets/images/cards/ff8/ff8_trauma.png",
+        "top": 4,
+        "right": 8,
+        "bottom": 5,
+        "left": 6,
+        "rarity": 6,
+        "element": null,
+        "card_sets": ["ff8"]
+    },
+    {
+        "card_id": "ff8_oilboyle",
+        "name": "Oilboyle",
+        "image_path": "assets/images/cards/ff8/ff8_oilboyle.png",
+        "top": 1,
+        "right": 8,
+        "bottom": 4,
+        "left": 8,
+        "rarity": 6,
+        "element": null,
+        "card_sets": ["ff8"]
+    },
+    {
+        "card_id": "ff8_shumi_tribe",
+        "name": "Shumi Tribe",
+        "image_path": "assets/images/cards/ff8/ff8_shumi_tribe.png",
+        "top": 6,
+        "right": 5,
+        "bottom": 8,
+        "left": 4,
+        "rarity": 6,
+        "element": null,
+        "card_sets": ["ff8"]
+    },
+    {
+        "card_id": "ff8_krysta",
+        "name": "Krysta",
+        "image_path": "assets/images/cards/ff8/ff8_krysta.png",
+        "top": 7,
+        "right": 5,
+        "bottom": 8,
+        "left": 1,
+        "rarity": 6,
+        "element": null,
         "card_sets": ["ff8"]
     },
     {
