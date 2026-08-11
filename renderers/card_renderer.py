@@ -147,15 +147,12 @@ def render_card(card, background_color):
         CARD_SIZE
     )
 
-    # sovrappongo il bordo allo sfondo e all'illustrazione
-    card_surface.blit(border_image, (0, 0))
-
     # associo ogni valore alla sua posizione sulla carta
     number_data = [
-        (card.top, (49, 22)),
-        (card.right, (83, 56)),
-        (card.bottom, (49, 90)),
-        (card.left, (15, 56))
+        (card.top, (51, 24)),
+        (card.right, (85, 58)),
+        (card.bottom, (51, 92)),
+        (card.left, (17, 58))
     ]
 
     # carico e disegno i quattro valori della carta
@@ -197,8 +194,8 @@ def render_card(card, background_color):
 
         # calcolo la posizione nell'angolo in alto a destra
         element_position = (
-            CARD_WIDTH - ELEMENT_SIZE[0] - 26,
-            23
+            CARD_WIDTH - ELEMENT_SIZE[0] - 36,
+            33
         )
 
         # sovrappongo l'icona elementale alla carta
@@ -207,6 +204,8 @@ def render_card(card, background_color):
             element_position
         )
 
+    # sovrappongo il bordo allo sfondo e all'illustrazione
+    card_surface.blit(border_image, (0, 0))
 
     # restituisco la carta composta fin ora
     return card_surface
