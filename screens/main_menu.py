@@ -3,7 +3,8 @@ from screens.screen import Screen
 from panels.deck_panel import DeckPanel
 # pannello di conferma per la chiusura del gioco
 from panels.exit_confirmation_panel import ExitConfirmationPanel
-
+# pannello di preparazione della modalità Free Match
+from panels.free_match_panel import FreeMatchPanel
 
 
 # Classe che gestisce il menu principale del gioco
@@ -84,6 +85,10 @@ class MainMenu(Screen):
                     selected = self.menu_items[self.selected_item]
                     if selected == "Exit":
                         self.open_exit_confirmation()
+                    elif selected == "Free Match":
+                        self.state.open_panel(
+                            FreeMatchPanel(self.width, self.height, self.state)
+                        )
                     elif selected == "Deck":
                         self.state.open_panel(
                             DeckPanel(self.width, self.height, self.state)
@@ -107,7 +112,9 @@ class MainMenu(Screen):
                     pass
 
                 elif selected == "Free Match":
-                    pass
+                    self.state.open_panel(
+                        FreeMatchPanel(self.width, self.height, self.state)
+                    )
 
                 elif selected == "Deck":
                     self.state.open_panel(
