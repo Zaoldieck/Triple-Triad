@@ -16,6 +16,10 @@ class FreeMatchPanel(Panel):
         # stato globale del gioco
         self.state = state
 
+        # fase attuale della preparazione della partita;
+        # inizialmente il giocatore configura le regole
+        self.current_phase = "rules"
+
         # dimensioni del pannello
         self.panel_width = 900
         self.panel_height = 550
@@ -98,6 +102,10 @@ class FreeMatchPanel(Panel):
         # servirà per i controlli del mouse
         self.trade_rule_rect = None
 
+        # rettangolo del comando Continue;
+        # servirà per tastiera e controlli del mouse
+        self.continue_rect = None
+
         # righe navigabili del pannello
         self.navigation_rows = [
             "cards",
@@ -133,18 +141,18 @@ class FreeMatchPanel(Panel):
             # freccia su: seleziono la riga precedente
             elif event.key == pygame.K_UP:
 
-                # per ora sono navigabili Cards, Hand, Extra, Special e Trade
+                # navigo ciclicamente tra tutte le righe del pannello
                 self.selected_row = (
                     self.selected_row - 1
-                ) % 5
+                ) % len(self.navigation_rows)
 
             # freccia giù: seleziono la riga successiva
             elif event.key == pygame.K_DOWN:
 
-                # per ora sono navigabili Cards, Hand, Extra, Special e Trade
+                # navigo ciclicamente tra tutte le righe del pannello
                 self.selected_row = (
                     self.selected_row + 1
-                ) % 5
+                ) % len(self.navigation_rows)
 
             # sulla riga Cards, la freccia sinistra
             # seleziona l'opzione precedente
@@ -282,6 +290,14 @@ class FreeMatchPanel(Panel):
                     self.selected_trade_rule + 1
                 ) % len(self.trade_rules)
 
+            # quando la manina si trova su Continue,
+            # Invio passa alla fase di selezione delle carte
+            elif (
+                self.navigation_rows[self.selected_row] == "continue"
+                and event.key == pygame.K_RETURN
+            ):
+                self.current_phase = "card_selection"
+
 
 
         # il mouse sposta la manina soltanto quando passa
@@ -348,6 +364,16 @@ class FreeMatchPanel(Panel):
             ):
                 self.selected_row = self.navigation_rows.index(
                     "trade"
+                )
+
+            # se il mouse passa sopra Continue,
+            # sposto la manina sul comando senza attivarlo
+            if (
+                self.continue_rect is not None
+                and self.continue_rect.collidepoint(event.pos)
+            ):
+                self.selected_row = self.navigation_rows.index(
+                    "continue"
                 )
 
             
@@ -517,7 +543,7 @@ class FreeMatchPanel(Panel):
                     if option_rect.collidepoint(event.pos):
 
                         # attivo l'opzione Cards cliccata
-                        self.selected_cards_option = i
+                        self.selected_cards_option = i 
 
                         # sposto la manina sulla riga Cards
                         self.selected_row = self.navigation_rows.index(
@@ -590,6 +616,14 @@ class FreeMatchPanel(Panel):
                             "special"
                         )
                         break
+
+                # se clicco su Continue,
+                # passo alla fase di selezione delle carte
+                if (
+                    self.continue_rect is not None
+                    and self.continue_rect.collidepoint(event.pos)
+                ):
+                    self.current_phase = "card_selection"
                     
             # il tasto destro chiude il pannello
             elif event.button == 3:
@@ -621,9 +655,15 @@ class FreeMatchPanel(Panel):
             panel_rect
         )
 
-        # preparo il titolo temporaneo
+        # scelgo il titolo in base alla fase attuale
+        if self.current_phase == "rules":
+            title_text = "Free Match"
+        else:
+            title_text = "Card Selection"
+
+        # preparo il titolo della fase attuale
         title = self.title_font.render(
-            "Free Match",
+            title_text,
             True,
             (255, 255, 255)
         )
@@ -634,6 +674,13 @@ class FreeMatchPanel(Panel):
 
         # disegno il titolo
         screen.blit(title, title_rect)
+
+        # nella seconda fase interrompo qui il disegno,
+        # così le regole della prima fase non vengono mostrate
+        if self.current_phase == "card_selection":
+            return
+
+
 
         # preparo il testo che identifica la prima riga
         cards_label = self.option_font.render(
@@ -1016,5 +1063,37 @@ class FreeMatchPanel(Panel):
             self.hand_cursor.draw(
                 screen,
                 self.trade_rule_rect,
+                gap=5
+            )
+
+        # preparo il comando per confermare le regole
+        # e passare alla selezione delle carte
+        continue_surface = self.option_font.render(
+            "Continue",
+            True,
+            (255, 255, 255)
+        )
+
+        # posiziono Continue sotto Trade Rules,
+        # mantenendo la stessa distanza verticale di 60 pixel
+        self.continue_rect = continue_surface.get_rect(
+            center=(
+                self.width // 2,
+                y + 500
+            )
+        )
+
+        # disegno il comando Continue
+        screen.blit(
+            continue_surface,
+            self.continue_rect
+        )
+
+        # quando Continue è selezionato,
+        # disegno la manina accanto al comando
+        if self.navigation_rows[self.selected_row] == "continue":
+            self.hand_cursor.draw(
+                screen,
+                self.continue_rect,
                 gap=5
             )
