@@ -12,6 +12,7 @@ from config import (
 
 # funzione che costruisce graficamente le carte
 from renderers.card_renderer import render_card
+from ui.animated_hand_cursor import AnimatedHandCursor
 from game.card_loader import load_cards
 
 # schermata che gestisce una partita di Triple Triad
@@ -139,9 +140,91 @@ class MatchScreen(Screen):
         # rettangoli delle carte dell'avversario
         self.opponent_card_rects = []
 
+        # indici degli slot avversari
+        # le cui carte sono già state giocate
+        self.played_opponent_card_indices = set()
+
+        # indice della carta scelta durante il turno avversario
+        self.selected_opponent_card = None
+
+        # casella scelta dall'avversario
+        self.opponent_target_row = None
+        self.opponent_target_column = None
+
+        # fase corrente dell'animazione avversaria;
+        # None significa che non è in corso il suo turno
+        self.opponent_turn_phase = None
+
+        # momento nel quale è iniziata la fase corrente
+        self.opponent_phase_start_time = 0
+
+        # durata di ogni fase dell'avversario
+        self.opponent_phase_duration = 500
+
         # rettangoli delle carte del giocatore;
         # serviranno successivamente per mouse e selezione
         self.player_card_rects = []
+
+        # rettangoli fissi usati solamente per il mouse;
+        # non si spostano insieme alla carta selezionata
+        self.player_card_hover_rects = []
+
+        # indici degli slot le cui carte
+        # sono già state giocate sul tabellone
+        self.played_player_card_indices = set()
+
+        # indice della carta attualmente indicata
+        # nella mano del giocatore
+        self.selected_player_card = 0
+
+        # manina animata usata durante la partita
+        self.hand_cursor = AnimatedHandCursor(
+            "assets/images/hand_cursor.png"
+        )
+
+        # modalità attuale dei controlli:
+        # hand seleziona una carta, board seleziona una casella
+        self.input_mode = "hand"
+
+        # casella inizialmente indicata nel tabellone
+        self.selected_board_row = 0
+        self.selected_board_column = 0
+
+        # coordinate e dimensioni del tabellone
+        self.board_x = 400
+        self.board_y = 57
+        self.board_cell_width = 160
+        self.board_cell_height = 202
+
+        # rettangoli fissi delle nove caselle
+        self.board_cell_rects = []
+
+        for row in range(3):
+
+            board_row_rects = []
+
+            for column in range(3):
+
+                cell_rect = pygame.Rect(
+                    (
+                        self.board_x
+                        + column * self.board_cell_width
+                    ),
+                    (
+                        self.board_y
+                        + row * self.board_cell_height
+                    ),
+                    self.board_cell_width,
+                    self.board_cell_height
+                )
+
+                board_row_rects.append(
+                    cell_rect
+                )
+
+            self.board_cell_rects.append(
+                board_row_rects
+            )
 
         # punteggio iniziale dei due giocatori
         self.player_score = 5
@@ -205,6 +288,8 @@ class MatchScreen(Screen):
 
         # creo il tabellone logico 3x3
         self.board = Board()
+
+        self.board_card_surfaces = {}
 
         # carico lo sfondo contenente
         # il tabellone disegnato graficamente
@@ -281,13 +366,382 @@ class MatchScreen(Screen):
 
         return colored_surface
 
+    # sposta la selezione saltando
+    # le carte già giocate
+    def move_player_card_selection(self, direction):
+
+        # provo al massimo tutti e cinque gli slot
+        for step in range(len(self.player_cards)):
+
+            next_index = (
+                self.selected_player_card + direction
+            ) % len(self.player_cards)
+
+            self.selected_player_card = next_index
+
+            # interrompo quando trovo una carta disponibile
+            if (
+                self.selected_player_card
+                not in self.played_player_card_indices
+            ):
+                return
+
+    # piazza sul tabellone la carta scelta dal giocatore
+    def place_selected_player_card(self):
+
+        # il piazzamento è possibile soltanto
+        # durante la selezione di una casella
+        if (
+            self.input_mode != "board"
+            or not self.player_cards
+        ):
+            return
+
+        # recupero la carta scelta
+        selected_card = self.player_cards[
+            self.selected_player_card
+        ]
+
+        # provo a inserire la carta nella casella selezionata
+        card_placed = self.board.place_card(
+            selected_card,
+            "player",
+            self.selected_board_row,
+            self.selected_board_column
+        )
+
+        # una casella già occupata non può essere utilizzata
+        if not card_placed:
+            return
+
+        # segno lo slot come utilizzato senza rimuoverlo;
+        # le altre carte mantengono così la loro posizione
+        self.played_player_card_indices.add(
+            self.selected_player_card
+        )
+
+        # passo al turno dell'avversario
+        self.input_mode = "opponent_turn"
+
+        # inizialmente attendo mezzo secondo
+        # prima di mostrare la carta scelta
+        self.opponent_turn_phase = "waiting_to_select"
+
+        # salvo il momento di inizio della fase
+        self.opponent_phase_start_time = (
+            pygame.time.get_ticks()
+        )
+
     # gestisce gli eventi della partita
     def handle_events(self, event):
-        pass
+
+        # controllo la tastiera
+        if event.type == pygame.KEYDOWN:
+
+            # ESC torna alla scelta della carta
+            # se la manina si trova sul tabellone
+            if (
+                event.key == pygame.K_ESCAPE
+                and self.input_mode == "board"
+            ):
+                self.input_mode = "hand"
+
+            # nella modalità hand scelgo una carta
+            elif self.input_mode == "hand":
+
+                # seleziono la carta precedente
+                if (
+                    event.key == pygame.K_UP
+                    and self.player_cards
+                ):
+                    self.move_player_card_selection(-1)
+
+                # seleziono la carta successiva
+                elif (
+                    event.key == pygame.K_DOWN
+                    and self.player_cards
+                ):
+                    self.move_player_card_selection(1)
+
+                # confermo la carta e passo al tabellone
+                elif (
+                    event.key == pygame.K_RETURN
+                    and self.player_cards
+                ):
+                    self.input_mode = "board"
+
+                    # parto dalla casella in alto a sinistra
+                    self.selected_board_row = 0
+                    self.selected_board_column = 0
+
+            # nella modalità board scelgo una casella
+            elif self.input_mode == "board":
+
+                # sposto la manina nella riga precedente
+                if event.key == pygame.K_UP:
+                    self.selected_board_row = (
+                        self.selected_board_row - 1
+                    ) % 3
+
+                # sposto la manina nella riga successiva
+                elif event.key == pygame.K_DOWN:
+                    self.selected_board_row = (
+                        self.selected_board_row + 1
+                    ) % 3
+
+                # sposto la manina nella colonna precedente
+                elif event.key == pygame.K_LEFT:
+                    self.selected_board_column = (
+                        self.selected_board_column - 1
+                    ) % 3
+
+                # sposto la manina nella colonna successiva
+                elif event.key == pygame.K_RIGHT:
+                    self.selected_board_column = (
+                        self.selected_board_column + 1
+                    ) % 3
+
+                # confermo la casella e piazzo la carta
+                elif event.key == pygame.K_RETURN:
+                    self.place_selected_player_card()
+
+        # il mouseover sulle carte funziona
+        # soltanto nella modalità hand
+        if (
+            event.type == pygame.MOUSEMOTION
+            and self.input_mode == "hand"
+        ):
+
+            # controllo le aree fisse in ordine inverso
+            for i in range(
+                len(self.player_card_hover_rects) - 1,
+                -1,
+                -1
+            ):
+
+                # ignoro gli slot delle carte già giocate
+                if i in self.played_player_card_indices:
+                    continue
+
+                card_rect = self.player_card_hover_rects[i]
+
+                if card_rect.collidepoint(event.pos):
+                    self.selected_player_card = i
+                    break
+
+        # nella modalità board il mouseover
+        # sposta la manina tra le nove caselle
+        if (
+            event.type == pygame.MOUSEMOTION
+            and self.input_mode == "board"
+        ):
+
+            # controllo tutte le righe del tabellone
+            for row in range(3):
+
+                # controllo tutte le colonne della riga
+                for column in range(3):
+
+                    cell_rect = self.board_cell_rects[
+                        row
+                    ][
+                        column
+                    ]
+
+                    # seleziono la casella sotto il mouse
+                    if cell_rect.collidepoint(event.pos):
+                        self.selected_board_row = row
+                        self.selected_board_column = column
+                        break
+        
+        # controllo i click del mouse
+        if event.type == pygame.MOUSEBUTTONDOWN:
+
+            # il clic sinistro seleziona una carta
+            # quando mi trovo nella modalità hand
+            if (
+                event.button == 1
+                and self.input_mode == "hand"
+            ):
+
+                # controllo le carte in ordine inverso,
+                # perché quelle più in basso sono disegnate sopra
+                for i in range(
+                    len(self.player_card_rects) - 1,
+                    -1,
+                    -1
+                ):
+
+                    # ignoro gli slot delle carte già giocate
+                    if i in self.played_player_card_indices:
+                        continue
+
+                    card_rect = self.player_card_rects[i]
+
+                    # seleziono la carta cliccata
+                    if card_rect.collidepoint(event.pos):
+                        self.selected_player_card = i
+                        self.input_mode = "board"
+
+                        # parto dalla casella in alto a sinistra
+                        self.selected_board_row = 0
+                        self.selected_board_column = 0
+                        break
+
+            # nella modalità board il clic sinistro
+            # piazza la carta nella casella cliccata
+            elif (
+                event.button == 1
+                and self.input_mode == "board"
+            ):
+
+                # controllo tutte le caselle del tabellone
+                for row in range(3):
+                    for column in range(3):
+
+                        cell_rect = self.board_cell_rects[
+                            row
+                        ][
+                            column
+                        ]
+
+                        # recupero la casella cliccata
+                        if cell_rect.collidepoint(event.pos):
+                            self.selected_board_row = row
+                            self.selected_board_column = column
+
+                            # provo a piazzare la carta
+                            self.place_selected_player_card()
+                            break
+
+                    # interrompo anche il ciclo esterno
+                    # se il turno del giocatore è terminato
+                    if self.input_mode == "opponent_turn":
+                        break
+            
+            # se la manina si trova sul tabellone,
+            # il clic destro torna alla scelta delle carte
+            elif (
+                event.button == 3
+                and self.input_mode == "board"
+            ):
+                self.input_mode = "hand"
 
     # aggiorna la logica della partita
     def update(self):
-        pass
+
+        # interrompo se non è il turno dell'avversario
+        if self.input_mode != "opponent_turn":
+            return
+
+        # recupero il tempo attuale
+        current_time = pygame.time.get_ticks()
+
+        # calcolo il tempo trascorso nella fase corrente
+        elapsed_time = (
+            current_time
+            - self.opponent_phase_start_time
+        )
+
+        # nella prima fase attendo prima di scegliere
+        if (
+            self.opponent_turn_phase == "waiting_to_select"
+            and elapsed_time >= self.opponent_phase_duration
+        ):
+
+            # recupero gli indici delle carte
+            # che l'avversario non ha ancora giocato
+            available_card_indices = [
+                i
+                for i in range(len(self.opponent_cards))
+                if i not in self.played_opponent_card_indices
+            ]
+
+            # recupero tutte le caselle ancora vuote
+            empty_board_positions = []
+
+            for row in range(3):
+                for column in range(3):
+
+                    if self.board.is_empty(
+                        row,
+                        column
+                    ):
+                        empty_board_positions.append(
+                            (
+                                row,
+                                column
+                            )
+                        )
+
+            # interrompo se non esistono mosse disponibili
+            if (
+                not available_card_indices
+                or not empty_board_positions
+            ):
+                return
+
+            # scelgo casualmente una carta disponibile
+            self.selected_opponent_card = random.choice(
+                available_card_indices
+            )
+
+            # scelgo casualmente una casella vuota
+            (
+                self.opponent_target_row,
+                self.opponent_target_column
+            ) = random.choice(
+                empty_board_positions
+            )
+
+            # passo alla fase che mostra la carta scelta
+            self.opponent_turn_phase = "showing_selection"
+
+            # riavvio il timer della nuova fase
+            self.opponent_phase_start_time = current_time
+
+        # dopo aver mostrato la carta scelta,
+        # l'avversario la piazza sul tabellone
+        elif (
+            self.opponent_turn_phase == "showing_selection"
+            and elapsed_time >= self.opponent_phase_duration
+        ):
+
+            # recupero la carta scelta
+            opponent_card = self.opponent_cards[
+                self.selected_opponent_card
+            ]
+
+            # inserisco la carta nella casella scelta
+            card_placed = self.board.place_card(
+                opponent_card,
+                "opponent",
+                self.opponent_target_row,
+                self.opponent_target_column
+            )
+
+            # continuo soltanto se il piazzamento è riuscito
+            if card_placed:
+
+                # segno lo slot avversario come utilizzato
+                self.played_opponent_card_indices.add(
+                    self.selected_opponent_card
+                )
+
+                # termino l'animazione dell'avversario
+                self.opponent_turn_phase = None
+
+                # pulisco carta e posizione temporanee
+                self.selected_opponent_card = None
+                self.opponent_target_row = None
+                self.opponent_target_column = None
+
+                # torno alla selezione della mano del giocatore
+                self.input_mode = "hand"
+
+                # la carta giocata dal giocatore non è più selezionabile;
+                # sposto la selezione sulla prima carta disponibile successiva
+                self.move_player_card_selection(1)   
 
     # disegna la schermata della partita
     def draw(self, screen):
@@ -331,6 +785,70 @@ class MatchScreen(Screen):
                         3
                     )
 
+        # disegno le carte presenti nelle nove caselle
+        for row in range(3):
+            for column in range(3):
+
+                cell = self.board.get_cell(
+                    row,
+                    column
+                )
+
+                # ignoro le caselle ancora vuote
+                if cell is None:
+                    continue
+
+                placed_card = cell["card"]
+                owner = cell["owner"]
+
+                # creo una chiave composta da carta e proprietario;
+                # il proprietario determina il colore dello sfondo
+                surface_key = (
+                    placed_card.card_id,
+                    owner
+                )
+
+                # costruisco la superficie soltanto la prima volta
+                if surface_key not in self.board_card_surfaces:
+
+                    if owner == "player":
+                        background_color = "blue"
+                    else:
+                        background_color = "red"
+
+                    board_card_surface = render_card(
+                        placed_card,
+                        background_color
+                    )
+
+                    board_card_surface = pygame.transform.smoothscale(
+                        board_card_surface,
+                        self.match_card_size
+                    )
+
+                    self.board_card_surfaces[
+                        surface_key
+                    ] = board_card_surface
+
+                # recupero la superficie dalla cache
+                board_card_surface = self.board_card_surfaces[
+                    surface_key
+                ]
+
+                # centro la carta nella relativa casella
+                board_card_rect = board_card_surface.get_rect(
+                    center=self.board_cell_rects[
+                        row
+                    ][
+                        column
+                    ].center
+                )
+
+                screen.blit(
+                    board_card_surface,
+                    board_card_rect
+                )
+
         # posizione iniziale della mano del giocatore
         player_hand_x = 100
         player_hand_y = 10
@@ -342,14 +860,39 @@ class MatchScreen(Screen):
         # ricreo i rettangoli delle carte
         self.player_card_rects = []
 
+        # rettangoli fissi usati solamente per il mouse;
+        # non si spostano insieme alla carta selezionata
+        self.player_card_hover_rects = []
+
         # disegno le cinque carte sovrapposte verticalmente
         for i, card_surface in enumerate(
             self.player_card_surfaces
         ):
 
+            # creo un rettangolo fisso nella posizione originale;
+            # questo rettangolo non segue lo spostamento laterale
+            hover_rect = pygame.Rect(
+                player_hand_x,
+                player_hand_y + i * player_card_offset,
+                self.match_card_size[0],
+                self.match_card_size[1]
+            )
+
+            self.player_card_hover_rects.append(
+                hover_rect
+            )
+
+            # posizione orizzontale normale della carta
+            card_x = player_hand_x
+
+            # la carta indicata dalla manina
+            # si sposta leggermente verso il tabellone
+            if i == self.selected_player_card:
+                card_x += 35
+
             card_rect = card_surface.get_rect(
                 topleft=(
-                    player_hand_x,
+                    card_x,
                     player_hand_y
                     + i * player_card_offset
                 )
@@ -360,11 +903,46 @@ class MatchScreen(Screen):
                 card_rect
             )
 
-            # le carte successive vengono disegnate sopra
-            # la parte inferiore delle precedenti
-            screen.blit(
-                card_surface,
-                card_rect
+            # disegno soltanto le carte
+            # che non sono ancora state giocate
+            if i not in self.played_player_card_indices:
+                screen.blit(
+                    card_surface,
+                    card_rect
+                )
+
+        # nella modalità hand la manina
+        # indica la carta selezionata
+        if (
+            self.input_mode == "hand"
+            and self.player_card_rects
+        ):
+
+            selected_player_card_rect = (
+                self.player_card_rects[
+                    self.selected_player_card
+                ]
+            )
+
+            self.hand_cursor.draw(
+                screen,
+                selected_player_card_rect,
+                gap=35
+            )
+
+        # nella modalità board la punta della manina
+        # indica il centro della casella selezionata
+        elif self.input_mode == "board":
+
+            selected_cell_rect = self.board_cell_rects[
+                self.selected_board_row
+            ][
+                self.selected_board_column
+            ]
+
+            self.hand_cursor.draw_at_point(
+                screen,
+                selected_cell_rect.center
             )
 
         # posizione iniziale della mano dell'avversario,
@@ -385,9 +963,20 @@ class MatchScreen(Screen):
             self.opponent_card_surfaces
         ):
 
+            # posizione orizzontale normale della carta avversaria
+            card_x = opponent_hand_x
+
+            # durante la scelta, la carta indicata
+            # avanza di 35 pixel verso il tabellone
+            if (
+                self.opponent_turn_phase == "showing_selection"
+                and i == self.selected_opponent_card
+            ):
+                card_x -= 35
+
             card_rect = card_surface.get_rect(
                 topleft=(
-                    opponent_hand_x,
+                    card_x,
                     opponent_hand_y
                     + i * player_card_offset
                 )
@@ -398,12 +987,13 @@ class MatchScreen(Screen):
                 card_rect
             )
 
-            # le carte successive coprono parzialmente
-            # quelle disegnate precedentemente
-            screen.blit(
-                card_surface,
-                card_rect
-            )
+            # disegno soltanto le carte avversarie
+            # che non sono ancora state giocate
+            if i not in self.played_opponent_card_indices:
+                screen.blit(
+                    card_surface,
+                    card_rect
+                )
 
         # recupero il numero azzurro del giocatore
         player_score_surface = (

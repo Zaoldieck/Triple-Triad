@@ -71,3 +71,54 @@ class AnimatedHandCursor:
             self.image,
             hand_rect
         )
+
+    # disegna la manina facendo indicare alla sua punta
+    # una coordinata precisa dello schermo
+    def draw_at_point(
+        self,
+        screen,
+        target_position
+    ):
+
+        # recupero le coordinate da indicare
+        target_x, target_y = target_position
+
+        # recupero il tempo trascorso in secondi
+        elapsed_time = (
+            pygame.time.get_ticks() / 1000.0
+        )
+
+        # calcolo l'oscillazione orizzontale
+        horizontal_offset = int(
+            math.sin(
+                elapsed_time * self.horizontal_speed
+            ) * self.horizontal_amplitude
+        )
+
+        # calcolo la fluttuazione verticale
+        vertical_offset = int(
+            math.sin(
+                elapsed_time * self.vertical_speed
+            ) * self.vertical_amplitude
+        )
+
+        # preparo il rettangolo della manina
+        hand_rect = self.image.get_rect()
+
+        # la punta destra della manina indica
+        # la coordinata orizzontale richiesta
+        hand_rect.right = (
+            target_x + horizontal_offset
+        )
+
+        # centro verticalmente la manina
+        # sulla coordinata richiesta
+        hand_rect.centery = (
+            target_y + vertical_offset
+        )
+
+        # disegno la manina nella posizione animata
+        screen.blit(
+            self.image,
+            hand_rect
+        )
