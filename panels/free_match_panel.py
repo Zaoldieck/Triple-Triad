@@ -23,9 +23,9 @@ class FreeMatchPanel(Panel):
         # stato globale del gioco
         self.state = state
 
-        # fase attuale della preparazione della partita;
-        # inizialmente il giocatore configura le regole
-        self.current_phase = "rules"
+        # nella prima build le regole non sono configurabili;
+        # Free Match apre direttamente la selezione delle carte
+        self.current_phase = "card_selection"
 
         # massimo numero di carte utilizzabili in una partita
         self.max_selected_cards = 5

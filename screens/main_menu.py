@@ -27,14 +27,8 @@ class MainMenu(Screen):
 
         # elenco delle voci del menu
         self.menu_items = [
-            "Story Mode",
             "Free Match",
-            "Local Multiplayer",
             "Deck",
-            "Statistics",
-            "Guide",
-            "Settings",
-            "Credits",
             "Exit"
         ]
 
