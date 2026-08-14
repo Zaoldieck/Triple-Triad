@@ -14,6 +14,7 @@ from config import (
 from renderers.card_renderer import render_card
 from ui.animated_hand_cursor import AnimatedHandCursor
 from game.card_loader import load_cards
+from panels.play_again_panel import PlayAgainPanel
 
 # schermata che gestisce una partita di Triple Triad
 class MatchScreen(Screen):
@@ -230,6 +231,17 @@ class MatchScreen(Screen):
         self.player_score = 5
         self.opponent_score = 5
 
+        # risultato finale della partita;
+        # rimane None finché la partita non termina
+        self.match_result = None
+
+        # momento di inizio dell'animazione
+        # di comparsa del risultato finale
+        self.result_fade_start_time = None
+
+        # durata del fade-in espressa in millisecondi
+        self.result_fade_duration = 800
+
         # dimensioni dei numeri del punteggio;
         # circa un terzo dell'altezza delle carte
         self.score_number_size = (
@@ -291,6 +303,40 @@ class MatchScreen(Screen):
 
         self.board_card_surfaces = {}
 
+        # posizioni delle carte che stanno eseguendo
+        # contemporaneamente l'animazione di cattura
+        self.flipping_card_positions = []
+
+        # proprietario che riceverà le carte catturate
+        # al centro dell'animazione di flip
+        self.flip_new_owner = None
+
+                # fase corrente del flip verticale:
+        # front_shrinking: il vecchio fronte si restringe
+        # back_expanding: il retro si allarga
+        # back_shrinking: il retro si restringe
+        # front_expanding: il nuovo fronte si allarga
+        self.flip_phase = None
+
+        # momento nel quale è iniziata la fase corrente
+        self.flip_phase_start_time = 0
+
+        # durata in millisecondi di ogni quarto del flip;
+        # l'animazione completa durerà circa 480 millisecondi
+        self.flip_phase_duration = 120
+
+        # carico il retro della carta usato
+        # durante il centro dell'animazione
+        self.board_card_back_surface = pygame.image.load(
+            CARD_BACK_PATH
+        ).convert_alpha()
+
+        # ridimensiono il retro come le carte sul tabellone
+        self.board_card_back_surface = pygame.transform.smoothscale(
+            self.board_card_back_surface,
+            self.match_card_size
+        )
+
         # carico lo sfondo contenente
         # il tabellone disegnato graficamente
         self.background_image = pygame.image.load(
@@ -306,6 +352,29 @@ class MatchScreen(Screen):
                 self.height
             )
         )
+
+        # percorsi delle immagini mostrate
+        # in base al risultato finale della partita
+        result_image_paths = {
+            "win": "assets/images/win.png",
+            "loss": "assets/images/loss.png",
+            "draw": "assets/images/draw.png"
+        }
+
+        # superfici delle tre possibili schermate finali
+        self.result_surfaces = {}
+
+        # carico una sola volta le immagini dei risultati
+        for result_name, image_path in result_image_paths.items():
+
+            result_surface = pygame.image.load(
+                image_path
+            ).convert_alpha()
+
+            # mantengo la risoluzione originale di 400 x 350 pixel
+            self.result_surfaces[
+                result_name
+            ] = result_surface
 
     # applica una sfumatura verticale alle parti bianche
     # di una superficie, mantenendo nero e trasparenza
@@ -366,6 +435,228 @@ class MatchScreen(Screen):
 
         return colored_surface
 
+    # individua le catture base dopo il piazzamento
+    # e avvia un unico ciclo di flip simultaneo
+    def resolve_basic_captures(
+        self,
+        row,
+        column
+    ):
+
+        # recupero la carta appena piazzata
+        placed_cell = self.board.get_cell(
+            row,
+            column
+        )
+
+        if placed_cell is None:
+            return False
+
+        placed_card = placed_cell["card"]
+        placed_owner = placed_cell["owner"]
+
+        # conterrà tutte le carte catturate
+        # durante questo singolo controllo
+        captured_positions = []
+
+        # per ogni direzione salvo:
+        # spostamento, valore della carta piazzata
+        # e valore opposto della carta vicina
+        directions = [
+            (-1, 0, "top", "bottom"),
+            (0, 1, "right", "left"),
+            (1, 0, "bottom", "top"),
+            (0, -1, "left", "right")
+        ]
+
+        # controllo le quattro caselle adiacenti
+        for (
+            row_offset,
+            column_offset,
+            placed_side,
+            neighbour_side
+        ) in directions:
+
+            neighbour_row = row + row_offset
+            neighbour_column = column + column_offset
+
+            neighbour_cell = self.board.get_cell(
+                neighbour_row,
+                neighbour_column
+            )
+
+            # ignoro bordi e caselle vuote
+            if neighbour_cell is None:
+                continue
+
+            # ignoro le carte già alleate
+            if neighbour_cell["owner"] == placed_owner:
+                continue
+
+            neighbour_card = neighbour_cell["card"]
+
+            placed_value = getattr(
+                placed_card,
+                placed_side
+            )
+
+            neighbour_value = getattr(
+                neighbour_card,
+                neighbour_side
+            )
+
+            # salvo la posizione se la carta viene catturata
+            if placed_value > neighbour_value:
+                captured_positions.append(
+                    (
+                        neighbour_row,
+                        neighbour_column
+                    )
+                )
+
+        # se non è stata catturata nessuna carta,
+        # non devo avviare alcuna animazione
+        if not captured_positions:
+            return False
+
+        # tutte le carte raccolte flipperanno insieme
+        self.flipping_card_positions = captured_positions
+
+        # salvo il proprietario che riceverà le carte
+        # quando il flip raggiungerà il proprio centro
+        self.flip_new_owner = placed_owner
+
+        # inizio restringendo orizzontalmente
+        # il vecchio fronte delle carte catturate
+        self.flip_phase = "front_shrinking"
+
+        # salvo il momento di inizio dell'animazione
+        self.flip_phase_start_time = pygame.time.get_ticks()
+
+        # segnalo che è iniziata un'animazione di cattura
+        return True
+
+    # aggiorna le quattro fasi del flip
+    # delle carte catturate
+    def update_capture_animation(self):
+
+        # non faccio nulla se non è in corso un flip
+        if self.flip_phase is None:
+            return
+
+        current_time = pygame.time.get_ticks()
+
+        elapsed_time = (
+            current_time
+            - self.flip_phase_start_time
+        )
+
+        # aspetto che la fase corrente sia terminata
+        if elapsed_time < self.flip_phase_duration:
+            return
+
+        # il vecchio fronte ha terminato
+        # di restringersi: mostro il retro
+        if self.flip_phase == "front_shrinking":
+            self.flip_phase = "back_expanding"
+
+        # il retro ha raggiunto la larghezza completa
+        elif self.flip_phase == "back_expanding":
+            self.flip_phase = "back_shrinking"
+
+        # il retro è nuovamente diventato sottile;
+        # ora cambio il proprietario delle carte
+        elif self.flip_phase == "back_shrinking":
+
+            # cambio proprietario e punteggio
+            # per tutte le carte catturate insieme
+            for row, column in self.flipping_card_positions:
+
+                self.board.change_owner(
+                    row,
+                    column,
+                    self.flip_new_owner
+                )
+
+                if self.flip_new_owner == "player":
+                    self.player_score += 1
+                    self.opponent_score -= 1
+
+                else:
+                    self.player_score -= 1
+                    self.opponent_score += 1
+
+            # ora può apparire il fronte con il nuovo colore
+            self.flip_phase = "front_expanding"
+
+        # il nuovo fronte ha recuperato
+        # la propria larghezza completa
+        elif self.flip_phase == "front_expanding":
+
+            # termino e pulisco l'animazione
+            self.flip_phase = None
+            self.flipping_card_positions = []
+            self.flip_new_owner = None
+
+            # se il tabellone era già stato completato,
+            # ora il punteggio include anche l'ultima cattura
+            if self.input_mode == "match_over":
+                self.determine_match_result()
+
+            # se deve iniziare il turno avversario,
+            # faccio partire da questo momento la sua attesa
+            if self.input_mode == "opponent_turn":
+                self.opponent_phase_start_time = current_time
+
+            return
+
+        # ogni nuova fase parte dal momento attuale
+        self.flip_phase_start_time = current_time
+
+    # determina il risultato confrontando
+    # i punteggi finali dei due giocatori
+    def determine_match_result(self):
+
+        if self.player_score > self.opponent_score:
+            self.match_result = "win"
+
+        elif self.player_score < self.opponent_score:
+            self.match_result = "loss"
+
+        else:
+            self.match_result = "draw"
+
+        # avvio il fade-in dell'immagine del risultato
+        self.result_fade_start_time = pygame.time.get_ticks()
+
+    # controlla se tutte le nove caselle sono occupate
+    # e interrompe i normali turni della partita
+    def check_match_finished(self):
+
+        # se esiste ancora una casella vuota,
+        # la partita deve continuare
+        if not self.board.is_full():
+            return False
+
+        # blocco i controlli e i turni normali
+        self.input_mode = "match_over"
+
+        # se non è in corso un ultimo flip,
+        # posso calcolare immediatamente il risultato
+        if self.flip_phase is None:
+            self.determine_match_result()
+
+        # interrompo l'eventuale turno dell'avversario
+        self.opponent_turn_phase = None
+
+        # pulisco le selezioni temporanee dell'avversario
+        self.selected_opponent_card = None
+        self.opponent_target_row = None
+        self.opponent_target_column = None
+
+        # segnalo che il tabellone è completo
+        return True
+
     # sposta la selezione saltando
     # le carte già giocate
     def move_player_card_selection(self, direction):
@@ -414,11 +705,23 @@ class MatchScreen(Screen):
         if not card_placed:
             return
 
+        # confronto la carta appena piazzata
+        # con tutte le carte avversarie adiacenti
+        self.resolve_basic_captures(
+            self.selected_board_row,
+            self.selected_board_column
+        )
+
         # segno lo slot come utilizzato senza rimuoverlo;
         # le altre carte mantengono così la loro posizione
         self.played_player_card_indices.add(
             self.selected_player_card
         )
+
+        # se il tabellone è pieno, termino la partita
+        # senza avviare un altro turno avversario
+        if self.check_match_finished():
+            return
 
         # passo al turno dell'avversario
         self.input_mode = "opponent_turn"
@@ -434,6 +737,57 @@ class MatchScreen(Screen):
 
     # gestisce gli eventi della partita
     def handle_events(self, event):
+
+        # durante una cattura attendo che tutte
+        # le carte abbiano completato il flip
+        if self.flip_phase is not None:
+            return
+
+        # quando la partita è terminata,
+        # accetto soltanto la conferma del risultato
+        if (
+            self.input_mode == "match_over"
+            and self.match_result is not None
+        ):
+
+            # controllo se il fade-in è terminato
+            result_fade_finished = (
+                pygame.time.get_ticks()
+                - self.result_fade_start_time
+                >= self.result_fade_duration
+            )
+
+            # dopo il fade, Invio oppure click sinistro
+            # aprono il pannello per la rivincita
+            result_confirmed = (
+                (
+                    event.type == pygame.KEYDOWN
+                    and event.key == pygame.K_RETURN
+                )
+                or
+                (
+                    event.type == pygame.MOUSEBUTTONDOWN
+                    and event.button == 1
+                )
+            )
+
+            if (
+                result_fade_finished
+                and result_confirmed
+            ):
+                self.state.open_panel(
+                    PlayAgainPanel(
+                        self.width,
+                        self.height,
+                        self.state,
+                        self.player_cards,
+                        self.match_rules
+                    )
+                )
+
+            # durante il risultato blocco
+            # tutti gli altri controlli della partita
+            return
 
         # controllo la tastiera
         if event.type == pygame.KEYDOWN:
@@ -630,6 +984,12 @@ class MatchScreen(Screen):
     # aggiorna la logica della partita
     def update(self):
 
+        # l'animazione di cattura ha la precedenza
+        # su qualsiasi avanzamento del turno
+        if self.flip_phase is not None:
+            self.update_capture_animation()
+            return
+
         # interrompo se non è il turno dell'avversario
         if self.input_mode != "opponent_turn":
             return
@@ -723,10 +1083,22 @@ class MatchScreen(Screen):
             # continuo soltanto se il piazzamento è riuscito
             if card_placed:
 
+                # confronto la carta avversaria appena piazzata
+                # con tutte le carte del giocatore adiacenti
+                self.resolve_basic_captures(
+                    self.opponent_target_row,
+                    self.opponent_target_column
+                )
+
                 # segno lo slot avversario come utilizzato
                 self.played_opponent_card_indices.add(
                     self.selected_opponent_card
                 )
+
+                # controllo anche il caso futuro nel quale
+                # sia l'avversario a riempire l'ultima casella
+                if self.check_match_finished():
+                    return
 
                 # termino l'animazione dell'avversario
                 self.opponent_turn_phase = None
@@ -835,8 +1207,93 @@ class MatchScreen(Screen):
                     surface_key
                 ]
 
-                # centro la carta nella relativa casella
-                board_card_rect = board_card_surface.get_rect(
+                # normalmente disegno il fronte della carta
+                surface_to_draw = board_card_surface
+
+                # normalmente la carta mantiene la larghezza completa
+                animated_width = self.match_card_size[0]
+
+                # controllo se questa carta appartiene
+                # al gruppo che sta flippando
+                card_is_flipping = (
+                    (row, column)
+                    in self.flipping_card_positions
+                )
+
+                if (
+                    card_is_flipping
+                    and self.flip_phase is not None
+                ):
+
+                    # calcolo l'avanzamento della fase corrente
+                    flip_progress = (
+                        pygame.time.get_ticks()
+                        - self.flip_phase_start_time
+                    ) / self.flip_phase_duration
+
+                    # impedisco al valore di uscire
+                    # dall'intervallo compreso tra 0 e 1
+                    flip_progress = max(
+                        0.0,
+                        min(1.0, flip_progress)
+                    )
+
+                    # il vecchio fronte si restringe
+                    if self.flip_phase == "front_shrinking":
+                        animated_width = int(
+                            self.match_card_size[0]
+                            * (1.0 - flip_progress)
+                        )
+
+                    # il retro compare e si allarga
+                    elif self.flip_phase == "back_expanding":
+                        surface_to_draw = (
+                            self.board_card_back_surface
+                        )
+
+                        animated_width = int(
+                            self.match_card_size[0]
+                            * flip_progress
+                        )
+
+                    # il retro si restringe nuovamente
+                    elif self.flip_phase == "back_shrinking":
+                        surface_to_draw = (
+                            self.board_card_back_surface
+                        )
+
+                        animated_width = int(
+                            self.match_card_size[0]
+                            * (1.0 - flip_progress)
+                        )
+
+                    # il nuovo fronte colorato si allarga
+                    elif self.flip_phase == "front_expanding":
+                        animated_width = int(
+                            self.match_card_size[0]
+                            * flip_progress
+                        )
+
+                    # mantengo almeno un pixel di larghezza
+                    # per evitare una superficie non valida
+                    animated_width = max(
+                        1,
+                        animated_width
+                    )
+
+                    # ridimensiono soltanto la larghezza;
+                    # l'altezza rimane sempre invariata
+                    surface_to_draw = pygame.transform.smoothscale(
+                        surface_to_draw,
+                        (
+                            animated_width,
+                            self.match_card_size[1]
+                        )
+                    )
+
+                # mantengo la carta centrata nella casella
+                # anche durante il restringimento orizzontale
+                board_card_rect = surface_to_draw.get_rect(
                     center=self.board_cell_rects[
                         row
                     ][
@@ -844,8 +1301,10 @@ class MatchScreen(Screen):
                     ].center
                 )
 
+                # disegno il fronte normale oppure
+                # la fase corrente dell'animazione
                 screen.blit(
-                    board_card_surface,
+                    surface_to_draw,
                     board_card_rect
                 )
 
@@ -1037,3 +1496,58 @@ class MatchScreen(Screen):
             opponent_score_surface,
             opponent_score_rect
         )
+
+        # mostro il risultato soltanto quando
+        # la partita è realmente terminata
+        if (
+            self.match_result is not None
+            and self.result_fade_start_time is not None
+        ):
+
+            # calcolo quanto tempo è trascorso
+            # dall'inizio del fade-in
+            fade_elapsed_time = (
+                pygame.time.get_ticks()
+                - self.result_fade_start_time
+            )
+
+            # calcolo l'avanzamento da 0.0 a 1.0
+            fade_progress = (
+                fade_elapsed_time
+                / self.result_fade_duration
+            )
+
+            fade_progress = max(
+                0.0,
+                min(1.0, fade_progress)
+            )
+
+            # converto l'avanzamento nell'alpha di Pygame:
+            # 0 è invisibile, 255 è completamente visibile
+            result_alpha = int(
+                255 * fade_progress
+            )
+
+            # uso una copia per non modificare
+            # permanentemente l'immagine originale
+            result_surface = self.result_surfaces[
+                self.match_result
+            ].copy()
+
+            result_surface.set_alpha(
+                result_alpha
+            )
+
+            # centro l'immagine sopra il tabellone
+            result_rect = result_surface.get_rect(
+                center=(
+                    self.width // 2,
+                    self.height // 2
+                )
+            )
+
+            # disegno il risultato con l'opacità corrente
+            screen.blit(
+                result_surface,
+                result_rect
+            )

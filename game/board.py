@@ -57,6 +57,44 @@ class Board:
 
         return self.grid[row][column]
 
+    # cambia il proprietario di una carta già piazzata
+    def change_owner(
+        self,
+        row,
+        column,
+        new_owner
+    ):
+
+        # recupero il contenuto della casella
+        cell = self.get_cell(
+            row,
+            column
+        )
+
+        # interrompo se la casella non contiene una carta
+        if cell is None:
+            return False
+
+        # assegno il nuovo proprietario
+        cell["owner"] = new_owner
+
+        return True
+
+    # restituisce True quando tutte
+    # le nove caselle sono occupate
+    def is_full(self):
+
+        # controllo tutte le righe del tabellone
+        for row in self.grid:
+
+            # se trovo almeno una casella vuota,
+            # la partita non è ancora terminata
+            if None in row:
+                return False
+
+        # nessuna casella è rimasta vuota
+        return True
+    
     # svuota completamente il tabellone
     def reset(self):
 
