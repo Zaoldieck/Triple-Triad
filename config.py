@@ -11,3 +11,7 @@ CARD_BACK_PATH = (
 
 # mostra temporaneamente tutte le carte durante lo sviluppo
 DEBUG_REVEAL_ALL_CARDS = False
+
+# mostra la griglia 3x3 sopra lo sfondo della partita;
+# usare True per controllare l'allineamento, False per nasconderla
+DEBUG_DRAW_MATCH_GRID = False

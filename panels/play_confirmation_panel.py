@@ -2,7 +2,8 @@ import pygame
 
 from panels.panel import Panel
 from ui.animated_hand_cursor import AnimatedHandCursor
-
+# schermata nella quale viene giocata la partita
+from screens.match_screen import MatchScreen
 
 # pannello che chiede conferma prima di iniziare la partita
 class PlayConfirmationPanel(Panel):
@@ -78,10 +79,52 @@ class PlayConfirmationPanel(Panel):
     # conferma l'opzione attualmente selezionata
     def confirm_selected_option(self):
 
-        # Yes avvierà la partita;
-        # questa azione verrà implementata successivamente
+        # Yes chiude i pannelli e avvia la partita
         if self.selected_option == 0:
-            pass
+
+            # raccolgo tutte le regole configurate
+            # nel Free Match Panel
+            match_rules = {
+                "cards": (
+                    self.free_match_panel.cards_options[
+                        self.free_match_panel.selected_cards_option
+                    ]
+                ),
+                "hand": (
+                    self.free_match_panel.hand_options[
+                        self.free_match_panel.selected_hand_option
+                    ]
+                ),
+                "extra": (
+                    self.free_match_panel.extra_rules.copy()
+                ),
+                "special": (
+                    self.free_match_panel.special_rules.copy()
+                ),
+                "trade": (
+                    self.free_match_panel.trade_rules[
+                        self.free_match_panel.selected_trade_rule
+                    ]
+                )
+            }
+
+            # creo la schermata della partita passando
+            # le cinque carte selezionate dal giocatore
+            match_screen = MatchScreen(
+                self.width,
+                self.height,
+                self.state,
+                self.free_match_panel.selected_cards,
+                match_rules
+            )
+
+            # imposto la nuova schermata attiva
+            self.state.change_screen(
+                match_screen
+            )
+
+            # chiudo il pannello di conferma
+            self.state.close_panel()
 
         # No annulla la quinta carta e torna indietro
         else:
