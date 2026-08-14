@@ -7,3 +7,8 @@ __pycache__/
 
 # salvataggi locali del giocatore
 saves/
+
+# file e cartelle generati da PyInstaller
+build/
+dist/
+*.spec

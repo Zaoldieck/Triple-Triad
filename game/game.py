@@ -22,6 +22,11 @@ class Game:
         # creo la finestra di gioco
         self.screen = pygame.display.set_mode((self.width, self.height))
 
+        # titolo mostrato nella barra della finestra
+        pygame.display.set_caption(
+            "Simo Game - Playable Demo v0.1"
+        )
+
         # creo il menu principale
         self.state.change_screen(MainMenu(self.width, self.height, self.state))  # creo un'istanza della classe MainMenu
 
