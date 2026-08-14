@@ -1,5 +1,12 @@
 import pygame
-
+# funzione che carica le carte mantenendo l'ordine di cards.json
+from game.card_loader import load_cards
+# funzione che costruisce graficamente una carta
+from renderers.card_renderer import render_card
+# set di carte abilitati nella versione corrente
+from config import ACTIVE_CARD_SETS
+# pannello che conferma le cinque carte selezionate
+from panels.play_confirmation_panel import PlayConfirmationPanel
 from ui.animated_hand_cursor import AnimatedHandCursor # cursore animato riutilizzabile
 from panels.panel import Panel
 
@@ -20,6 +27,59 @@ class FreeMatchPanel(Panel):
         # inizialmente il giocatore configura le regole
         self.current_phase = "rules"
 
+        # massimo numero di carte utilizzabili in una partita
+        self.max_selected_cards = 5
+
+        # massimo numero di carte mostrate in ogni pagina
+        self.cards_per_selection_page = 11
+
+        # carico il catalogo mantenendo l'ordine presente in cards.json
+        loaded_cards = load_cards(
+            "data/cards.json",
+            ACTIVE_CARD_SETS
+        )
+
+        # conterrà soltanto le carte utilizzabili nella partita
+        self.available_cards = []
+
+        # filtro il catalogo in base alle quantità possedute
+        for card in loaded_cards:
+
+            # None identifica una carta posseduta in quantità infinita
+            quantity = self.state.card_collection.get_quantity(
+                card
+            )
+
+            # aggiungo le carte infinite e quelle con quantità da 1 a 99;
+            # le carte con quantità zero non appaiono nella selezione
+            if quantity is None or 1 <= quantity <= 99:
+                self.available_cards.append(card)
+
+        # carte scelte dal giocatore, conservate
+        # nello stesso ordine in cui vengono selezionate
+        self.selected_cards = []
+
+        # pagina attualmente mostrata nella lista delle carte
+        self.card_selection_page = 0
+
+        # posizione della manina nella pagina corrente
+        self.selected_card_row = 0
+
+        # rettangoli delle righe mostrate nella pagina corrente;
+        # serviranno per hover e click del mouse
+        self.card_selection_rects = []
+
+        # superficie contenente l'anteprima della carta indicata
+        self.selection_card_preview = None
+
+        # identificatore della carta attualmente mostrata;
+        # evita di ricostruire la stessa anteprima a ogni frame
+        self.selection_preview_card_id = None
+
+        # cache delle versioni ridotte delle carte selezionate;
+        # evita di ricostruirle graficamente a ogni frame
+        self.selected_card_surfaces = {}
+
         # dimensioni del pannello
         self.panel_width = 900
         self.panel_height = 550
@@ -37,6 +97,12 @@ class FreeMatchPanel(Panel):
         self.option_font = pygame.font.SysFont(
             "Arial",
             30
+        )
+
+        # font più piccolo usato nella lista di selezione delle carte
+        self.card_list_font = pygame.font.SysFont(
+            "Arial",
+            21
         )
 
         # opzioni esclusive relative alla visibilità delle carte
@@ -128,9 +194,285 @@ class FreeMatchPanel(Panel):
             "assets/images/hand_cursor.png"
         )
 
+    # cambia la pagina mostrata nella selezione delle carte
+    def change_card_selection_page(self, direction):
+
+        # calcolo dinamicamente il numero totale di pagine
+        total_pages = max(
+            1,
+            (
+                len(self.available_cards)
+                + self.cards_per_selection_page
+                - 1
+            ) // self.cards_per_selection_page
+        )
+
+        # interrompo se esiste una sola pagina
+        if total_pages <= 1:
+            return
+
+        # cambio pagina ciclicamente
+        self.card_selection_page = (
+            self.card_selection_page + direction
+        ) % total_pages
+
+        # calcolo quante carte contiene la nuova pagina
+        start_index = (
+            self.card_selection_page
+            * self.cards_per_selection_page
+        )
+
+        cards_on_new_page = min(
+            self.cards_per_selection_page,
+            len(self.available_cards) - start_index
+        )
+
+        # mantengo la stessa riga quando esiste;
+        # altrimenti riporto la manina sulla prima carta
+        if self.selected_card_row >= cards_on_new_page:
+            self.selected_card_row = 0
+
+        # obbligo l'anteprima ad aggiornarsi
+        self.selection_preview_card_id = None
+
+    # seleziona oppure deseleziona la carta indicata
+    def toggle_selected_card(self):
+
+        # calcolo l'indice della carta nell'intera lista
+        card_index = (
+            self.card_selection_page
+            * self.cards_per_selection_page
+            + self.selected_card_row
+        )
+
+        # interrompo se la posizione non contiene una carta
+        if card_index >= len(self.available_cards):
+            return
+
+        # recupero la carta indicata
+        selected_card = self.available_cards[
+            card_index
+        ]
+
+        # cerco la carta tra quelle già selezionate
+        for card in self.selected_cards:
+
+            # se era già selezionata, la rimuovo
+            if card.card_id == selected_card.card_id:
+                self.selected_cards.remove(card)
+                return
+
+        # non permetto di selezionare più di cinque carte
+        if len(self.selected_cards) >= self.max_selected_cards:
+            return
+
+        # aggiungo la carta mantenendo l'ordine di selezione
+        self.selected_cards.append(
+            selected_card
+        )
+
+        # quando viene selezionata la quinta carta,
+        # apro il pannello di conferma della mano
+        if len(self.selected_cards) == self.max_selected_cards:
+            self.state.open_panel(
+                PlayConfirmationPanel(
+                    self.width,
+                    self.height,
+                    self.state,
+                    self
+                )
+            )
+
+    # aggiorna l'anteprima della carta indicata nella lista
+    def update_selection_card_preview(self):
+
+        # calcolo l'indice della carta nell'intera lista
+        card_index = (
+            self.card_selection_page
+            * self.cards_per_selection_page
+            + self.selected_card_row
+        )
+
+        # se non esiste una carta in questa posizione,
+        # rimuovo l'anteprima
+        if card_index >= len(self.available_cards):
+            self.selection_card_preview = None
+            self.selection_preview_card_id = None
+            return
+
+        # recupero la carta indicata
+        selected_card = self.available_cards[
+            card_index
+        ]
+
+        # evito di ricostruire la stessa carta a ogni frame
+        if (
+            selected_card.card_id
+            == self.selection_preview_card_id
+        ):
+            return
+
+        # costruisco il fronte blu della carta
+        self.selection_card_preview = render_card(
+            selected_card,
+            "blue"
+        )
+
+        # ridimensiono l'anteprima mantenendo
+        # le proporzioni originali della carta
+        self.selection_card_preview = (
+            pygame.transform.smoothscale(
+                self.selection_card_preview,
+                (150, 190)
+            )
+        )
+
+        # salvo l'identificatore della carta mostrata
+        self.selection_preview_card_id = (
+            selected_card.card_id
+        )
+
+
+    # attiva o disattiva una regola Extra
+    # rispettando le dipendenze tra le regole
+    def toggle_extra_rule(self, rule_name):
+
+        # Combo può essere attivata soltanto se
+        # almeno una tra Same e Plus è attiva
+        if (
+            rule_name == "Combo"
+            and not self.extra_rules["Combo"]
+            and not self.extra_rules["Same"]
+            and not self.extra_rules["Plus"]
+        ):
+            return
+
+        # inverto lo stato della regola richiesta
+        self.extra_rules[rule_name] = not (
+            self.extra_rules[rule_name]
+        )
+
+        # se Same e Plus sono entrambe disattivate,
+        # anche Combo deve essere disattivata automaticamente
+        if (
+            not self.extra_rules["Same"]
+            and not self.extra_rules["Plus"]
+        ):
+            self.extra_rules["Combo"] = False
+            
     # gestisce gli eventi del pannello
     def handle_events(self, event):
 
+        # gestisco separatamente gli eventi della selezione carte
+        if self.current_phase == "card_selection":
+
+            # controllo la tastiera
+            if event.type == pygame.KEYDOWN:
+
+                # ESC chiude completamente il pannello
+                if event.key == pygame.K_ESCAPE:
+                    self.state.close_panel()
+
+                # calcolo quante carte sono presenti nella pagina corrente
+                start_index = (
+                    self.card_selection_page
+                    * self.cards_per_selection_page
+                )
+
+                cards_on_page = min(
+                    self.cards_per_selection_page,
+                    len(self.available_cards) - start_index
+                )
+
+                # sposto la manina sulla carta precedente
+                if event.key == pygame.K_UP and cards_on_page > 0:
+                    self.selected_card_row = (
+                        self.selected_card_row - 1
+                    ) % cards_on_page
+
+                # sposto la manina sulla carta successiva
+                elif event.key == pygame.K_DOWN and cards_on_page > 0:
+                    self.selected_card_row = (
+                        self.selected_card_row + 1
+                    ) % cards_on_page
+
+                # freccia sinistra: pagina precedente
+                elif event.key == pygame.K_LEFT:
+                    self.change_card_selection_page(-1)
+
+                # freccia destra: pagina successiva
+                elif event.key == pygame.K_RIGHT:
+                    self.change_card_selection_page(1)
+                
+
+                # Invio seleziona oppure deseleziona
+                # la carta indicata dalla manina
+                elif event.key == pygame.K_RETURN:
+                    self.toggle_selected_card()
+
+            # se il mouse si muove sopra la lista delle carte
+            if event.type == pygame.MOUSEMOTION:
+
+                # controllo tutti i rettangoli della pagina corrente
+                for i, card_rect in enumerate(
+                    self.card_selection_rects
+                ):
+
+                    # se il mouse si trova sopra una carta,
+                    # sposto immediatamente la manina su quella riga
+                    if card_rect.collidepoint(event.pos):
+                        self.selected_card_row = i
+                        break
+
+            # la rotella del mouse cambia la pagina
+            # della lista delle carte possedute
+            if event.type == pygame.MOUSEWHEEL:
+
+                # rotella verso l'alto: pagina precedente
+                if event.y > 0:
+                    self.change_card_selection_page(-1)
+
+                # rotella verso il basso: pagina successiva
+                elif event.y < 0:
+                    self.change_card_selection_page(1)
+            
+            # controllo i click del mouse nella lista delle carte
+            if event.type == pygame.MOUSEBUTTONDOWN:
+
+                # il tasto sinistro seleziona oppure deseleziona
+                # la carta presente nella riga cliccata
+                if event.button == 1:
+
+                    for i, card_rect in enumerate(
+                        self.card_selection_rects
+                    ):
+
+                        if card_rect.collidepoint(event.pos):
+
+                            # sposto la manina sulla carta cliccata
+                            self.selected_card_row = i
+
+                            # alterno lo stato selezionato/deselezionato
+                            self.toggle_selected_card()
+                            break
+
+                # il tasto destro torna indietro di uno step
+                elif event.button == 3:
+
+                    # se ci sono carte selezionate,
+                    # rimuovo l'ultima carta aggiunta
+                    if self.selected_cards:
+                        self.selected_cards.pop()
+
+                    # se non è stata selezionata alcuna carta,
+                    # torno alla configurazione delle regole
+                    else:
+                        self.current_phase = "rules"
+
+            # impedisco agli eventi della seconda fase
+            # di modificare le regole nascoste
+            return
+        
         # gestisco i controlli della tastiera
         if event.type == pygame.KEYDOWN:
 
@@ -226,10 +568,10 @@ class FreeMatchPanel(Panel):
                     self.extra_rules.keys()
                 )[self.selected_extra_rule]
 
-                # inverto lo stato della regola:
-                # False diventa True e True diventa False
-                self.extra_rules[selected_rule_name] = not (
-                    self.extra_rules[selected_rule_name]
+                # modifico la regola rispettando
+                # le dipendenze di Combo
+                self.toggle_extra_rule(
+                    selected_rule_name
                 )
 
             # sulla riga Special, la freccia sinistra sposta
@@ -579,10 +921,10 @@ class FreeMatchPanel(Panel):
                             self.extra_rules.keys()
                         )[i]
 
-                        # attivo la regola se era disattivata,
-                        # oppure la disattivo se era attiva
-                        self.extra_rules[selected_rule_name] = not (
-                            self.extra_rules[selected_rule_name]
+                        # modifico la regola rispettando
+                        # le dipendenze di Combo
+                        self.toggle_extra_rule(
+                            selected_rule_name
                         )
 
                         # sposto la manina sulla regola cliccata
@@ -675,9 +1017,290 @@ class FreeMatchPanel(Panel):
         # disegno il titolo
         screen.blit(title, title_rect)
 
-        # nella seconda fase interrompo qui il disegno,
-        # così le regole della prima fase non vengono mostrate
+        # nella seconda fase disegno la lista delle carte possedute
         if self.current_phase == "card_selection":
+
+            # creo l'area che contiene la lista
+            card_list_rect = pygame.Rect(
+                x + 35,
+                y + 90,
+                390,
+                420
+            )
+
+            # disegno lo sfondo della lista
+            pygame.draw.rect(
+                screen,
+                (70, 70, 70),
+                card_list_rect
+            )
+
+            # dimensioni compatte delle 11 righe
+            slot_height = 32
+            slot_spacing = 4
+
+            # calcolo la prima carta della pagina corrente
+            start_index = (
+                self.card_selection_page
+                * self.cards_per_selection_page
+            )
+
+            # recupero al massimo 11 carte
+            page_cards = self.available_cards[
+                start_index:
+                start_index + self.cards_per_selection_page
+            ]
+
+            # svuoto i rettangoli della pagina precedente
+            self.card_selection_rects = []
+
+            # disegno soltanto le righe che contengono una carta
+            for i, card in enumerate(page_cards):
+
+                slot_rect = pygame.Rect(
+                    card_list_rect.x + 10,
+                    card_list_rect.y
+                    + 10
+                    + i * (slot_height + slot_spacing),
+                    card_list_rect.width - 20,
+                    slot_height
+                )
+
+                # salvo il rettangolo per i futuri controlli
+                self.card_selection_rects.append(
+                    slot_rect
+                )
+
+                # disegno lo sfondo della riga
+                pygame.draw.rect(
+                    screen,
+                    (50, 50, 50),
+                    slot_rect
+                )
+
+                # recupero la quantità posseduta
+                quantity = self.state.card_collection.get_quantity(
+                    card
+                )
+
+                # le carte di rarità 1 mostrano il simbolo infinito
+                if quantity is None:
+                    quantity_text = "∞"
+                else:
+                    quantity_text = f"x{quantity}"
+
+                # controllo se la carta è già stata scelta
+                card_is_selected = any(
+                    selected_card.card_id == card.card_id
+                    for selected_card in self.selected_cards
+                )
+
+                # una carta già scelta appare sbiadita
+                if card_is_selected:
+                    card_text_color = (120, 120, 120)
+                else:
+                    card_text_color = (255, 255, 255)
+
+                # preparo il nome della carta
+                card_name_surface = self.card_list_font.render(
+                    card.name,
+                    True,
+                    card_text_color
+                )
+
+                card_name_rect = card_name_surface.get_rect(
+                    midleft=(
+                        slot_rect.x + 12,
+                        slot_rect.centery
+                    )
+                )
+
+                # preparo la quantità posseduta
+                quantity_surface = self.card_list_font.render(
+                    quantity_text,
+                    True,
+                    card_text_color
+                )
+
+                quantity_rect = quantity_surface.get_rect(
+                    midright=(
+                        slot_rect.right - 12,
+                        slot_rect.centery
+                    )
+                )
+
+                # disegno nome e quantità
+                screen.blit(
+                    card_name_surface,
+                    card_name_rect
+                )
+
+                screen.blit(
+                    quantity_surface,
+                    quantity_rect
+                )
+
+            # calcolo dinamicamente il numero totale
+            # delle pagine della selezione carte
+            selection_total_pages = max(
+                1,
+                (
+                    len(self.available_cards)
+                    + self.cards_per_selection_page
+                    - 1
+                ) // self.cards_per_selection_page
+            )
+
+            # preparo il testo della pagina corrente
+            selection_page_surface = self.card_list_font.render(
+                (
+                    f"Page {self.card_selection_page + 1}"
+                    f" / {selection_total_pages}"
+                ),
+                True,
+                (255, 255, 255)
+            )
+
+            # posiziono il testo sotto la lista delle carte
+            selection_page_rect = selection_page_surface.get_rect(
+                center=(
+                    card_list_rect.centerx,
+                    card_list_rect.bottom + 16
+                )
+            )
+
+            # disegno il numero della pagina
+            screen.blit(
+                selection_page_surface,
+                selection_page_rect
+            )
+
+            # preparo il contatore delle carte selezionate
+            selected_cards_count_surface = self.card_list_font.render(
+                (
+                    f"Cards {len(self.selected_cards)}"
+                    f" / {self.max_selected_cards}"
+                ),
+                True,
+                (255, 255, 255)
+            )
+
+            # posiziono il contatore a destra,
+            # alla stessa altezza del numero della pagina
+            selected_cards_count_rect = (
+                selected_cards_count_surface.get_rect(
+                    center=(
+                        x + 662,
+                        card_list_rect.bottom + 16
+                    )
+                )
+            )
+
+            # disegno il contatore delle carte selezionate
+            screen.blit(
+                selected_cards_count_surface,
+                selected_cards_count_rect
+            )
+
+            # aggiorno l'anteprima in base alla carta indicata
+            self.update_selection_card_preview()
+
+            # disegno l'anteprima nella parte destra del pannello
+            if self.selection_card_preview is not None:
+
+                selection_preview_rect = (
+                    self.selection_card_preview.get_rect(
+                        center=(
+                            x + 662,
+                            y + 186
+                        )
+                    )
+                )
+
+                screen.blit(
+                    self.selection_card_preview,
+                    selection_preview_rect
+                )
+
+                # dimensioni delle carte mostrate nella mano scelta
+                selected_card_size = (130, 164)
+
+                # posizione iniziale della prima carta scelta
+                selected_cards_x = x + 460
+                selected_cards_y = y + 345
+
+                # ogni carta successiva viene spostata verso destra;
+                # il valore è circa metà della larghezza della carta
+                selected_card_offset = 70
+
+                # disegno le carte nello stesso ordine di selezione
+                for i, selected_card in enumerate(
+                    self.selected_cards
+                ):
+
+                    # costruisco la superficie soltanto la prima volta
+                    if (
+                        selected_card.card_id
+                        not in self.selected_card_surfaces
+                    ):
+                        selected_surface = render_card(
+                            selected_card,
+                            "blue"
+                        )
+
+                        selected_surface = pygame.transform.smoothscale(
+                            selected_surface,
+                            selected_card_size
+                        )
+
+                        self.selected_card_surfaces[
+                            selected_card.card_id
+                        ] = selected_surface
+
+                    # recupero la superficie dalla cache
+                    selected_surface = self.selected_card_surfaces[
+                        selected_card.card_id
+                    ]
+
+                    # ogni nuova carta è leggermente spostata a destra
+                    selected_card_position = (
+                        selected_cards_x + i * selected_card_offset,
+                        selected_cards_y
+                    )
+
+                    # le carte vengono disegnate in ordine;
+                    # quelle nuove appaiono sopra le precedenti
+                    screen.blit(
+                        selected_surface,
+                        selected_card_position
+                    )
+
+            # se nella pagina è presente almeno una carta,
+            # disegno la manina sulla riga selezionata
+            if self.card_selection_rects:
+
+                # se la posizione precedente non esiste nella nuova pagina,
+                # riporto la manina sulla prima carta
+                if (
+                    self.selected_card_row
+                    >= len(self.card_selection_rects)
+                ):
+                    self.selected_card_row = 0
+
+                # recupero il rettangolo della carta selezionata
+                selected_card_rect = self.card_selection_rects[
+                    self.selected_card_row
+                ]
+
+                # disegno la manina accanto alla riga
+                self.hand_cursor.draw(
+                    screen,
+                    selected_card_rect,
+                    gap=5
+                )
+                    
+            # interrompo il disegno per non mostrare
+            # anche le regole della prima fase
             return
 
 
