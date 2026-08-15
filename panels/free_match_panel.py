@@ -334,7 +334,6 @@ class FreeMatchPanel(Panel):
             selected_card.card_id
         )
 
-
     # attiva o disattiva una regola Extra
     # rispettando le dipendenze tra le regole
     def toggle_extra_rule(self, rule_name):
@@ -354,6 +353,14 @@ class FreeMatchPanel(Panel):
             self.extra_rules[rule_name]
         )
 
+        # se Same viene disattivata,
+        # Wall non può rimanere attiva
+        if (
+            rule_name == "Same"
+            and not self.extra_rules["Same"]
+        ):
+            self.special_rules["Wall"] = False
+
         # se Same e Plus sono entrambe disattivate,
         # anche Combo deve essere disattivata automaticamente
         if (
@@ -361,6 +368,23 @@ class FreeMatchPanel(Panel):
             and not self.extra_rules["Plus"]
         ):
             self.extra_rules["Combo"] = False
+
+    # attiva o disattiva una regola Special
+    # rispettando le sue eventuali dipendenze
+    def toggle_special_rule(self, rule_name):
+
+        # inverto lo stato della regola richiesta
+        self.special_rules[rule_name] = not (
+            self.special_rules[rule_name]
+        )
+
+        # Wall utilizza la meccanica di Same;
+        # attivandola abilito automaticamente anche Same
+        if (
+            rule_name == "Wall"
+            and self.special_rules["Wall"]
+        ):
+            self.extra_rules["Same"] = True
 
     # raccoglie tutte le regole attualmente configurate
     def get_match_rules(self):
@@ -660,8 +684,8 @@ class FreeMatchPanel(Panel):
 
                 # inverto lo stato della regola:
                 # False diventa True e True diventa False
-                self.special_rules[selected_rule_name] = not (
-                    self.special_rules[selected_rule_name]
+                self.toggle_special_rule(
+                    selected_rule_name
                 )
 
             # sulla riga Trade Rules, la freccia sinistra
@@ -1005,8 +1029,8 @@ class FreeMatchPanel(Panel):
 
                         # attivo la regola se era disattivata,
                         # oppure la disattivo se era attiva
-                        self.special_rules[selected_rule_name] = not (
-                            self.special_rules[selected_rule_name]
+                        self.toggle_special_rule(
+                            selected_rule_name
                         )
 
                         # sposto la manina sulla regola cliccata

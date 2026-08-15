@@ -29,7 +29,9 @@ class MatchScreen(Screen):
         height,
         state,
         player_cards,
-        match_rules
+        match_rules,
+        opponent_cards=None,
+        preserve_hands=False
     ):
 
         # dimensioni della finestra
@@ -46,9 +48,16 @@ class MatchScreen(Screen):
             ACTIVE_CARD_SETS
         )
 
+        # durante Sudden Death utilizzo esattamente
+        # la mano ricevuta dal round precedente
+        if preserve_hands:
+            self.player_cards = list(
+                player_cards
+            )
+
         # con Hand Random genero cinque carte differenti
         # tra tutte quelle attualmente possedute
-        if match_rules["hand"] == "Random":
+        elif match_rules["hand"] == "Random":
 
             owned_player_cards = []
 
@@ -93,26 +102,35 @@ class MatchScreen(Screen):
                 player_cards
             )
 
-        # per ora l'avversario può utilizzare
-        # soltanto carte di rarità 1
-        rarity_one_cards = [
-            card
-            for card in available_opponent_cards
-            if card.rarity == 1
-        ]
-
-        # verifico che esistano almeno cinque carte utilizzabili
-        if len(rarity_one_cards) < 5:
-            raise ValueError(
-                "Not enough rarity 1 cards "
-                "to generate the opponent hand"
+        # durante Sudden Death conservo esattamente
+        # la mano avversaria ricevuta dal round precedente
+        if opponent_cards is not None:
+            self.opponent_cards = list(
+                opponent_cards
             )
 
-        # scelgo cinque carte differenti in modo casuale
-        self.opponent_cards = random.sample(
-            rarity_one_cards,
-            5
-        )
+        # durante una nuova partita genero normalmente
+        # cinque carte avversarie casuali di rarità 1
+        else:
+
+            rarity_one_cards = [
+                card
+                for card in available_opponent_cards
+                if card.rarity == 1
+            ]
+
+            # verifico che esistano almeno
+            # cinque carte utilizzabili
+            if len(rarity_one_cards) < 5:
+                raise ValueError(
+                    "Not enough rarity 1 cards "
+                    "to generate the opponent hand"
+                )
+
+            self.opponent_cards = random.sample(
+                rarity_one_cards,
+                5
+            )
 
         # dimensioni delle carte mostrate durante la partita
         self.match_card_size = (
@@ -509,24 +527,6 @@ class MatchScreen(Screen):
         # l'animazione completa durerà circa 480 millisecondi
         self.flip_phase_duration = 120
 
-        # indica se il PNG della regola Same
-        # deve essere mostrato sullo schermo
-        self.same_rule_effect_active = False
-
-        # momento nel quale è apparso il PNG
-        self.same_rule_effect_start_time = 0
-
-        # Same rimane visibile per 1 secondo
-        self.same_rule_effect_duration = 1000
-
-        # carte che dovranno flippare
-        # dopo la scomparsa del PNG
-        self.pending_same_capture_positions = []
-
-        # proprietario che riceverà le carte
-        # dopo il feedback visivo
-        self.pending_same_new_owner = None
-
         # carico i PNG mostrati quando
         # si attivano le regole speciali
         self.rule_effect_surfaces = {
@@ -542,13 +542,6 @@ class MatchScreen(Screen):
                 "assets/images/cards/rules/combo.png"
             ).convert_alpha()
         }
-
-        # mantengo temporaneamente questo riferimento
-        # perché il feedback attuale di Same lo utilizza ancora;
-        # verrà rimosso quando completeremo la coda generica
-        self.same_rule_surface = (
-            self.rule_effect_surfaces["same"]
-        )
 
         # coda delle regole che devono ancora essere risolte;
         # ogni elemento conterrà nome, catture e proprietario
@@ -948,22 +941,51 @@ class MatchScreen(Screen):
             neighbour_row = row + row_offset
             neighbour_column = column + column_offset
 
+            # recupero prima il valore del lato
+            # della carta appena posizionata
+            placed_value = getattr(
+                placed_card,
+                placed_side
+            )
+
+            # controllo se la direzione conduce
+            # fuori dai confini del tabellone
+            neighbour_is_wall = not (
+                0 <= neighbour_row < 3
+                and 0 <= neighbour_column < 3
+            )
+
+            if neighbour_is_wall:
+
+                # con Wall attiva, ogni bordo esterno
+                # viene considerato come un valore 10
+                if (
+                    self.match_rules["special"]["Wall"]
+                    and placed_value == 10
+                ):
+                    matching_neighbours.append(
+                        (
+                            None,
+                            None,
+                            "wall"
+                        )
+                    )
+
+                # oltre il bordo non può esserci una carta
+                continue
+
+            # la posizione è interna al tabellone;
+            # recupero l'eventuale carta adiacente
             neighbour_cell = self.board.get_cell(
                 neighbour_row,
                 neighbour_column
             )
 
-            # per ora ignoro i bordi;
-            # verranno gestiti successivamente da Same Wall
+            # ignoro le caselle interne ancora vuote
             if neighbour_cell is None:
                 continue
 
             neighbour_card = neighbour_cell["card"]
-
-            placed_value = getattr(
-                placed_card,
-                placed_side
-            )
 
             neighbour_value = getattr(
                 neighbour_card,
@@ -986,8 +1008,14 @@ class MatchScreen(Screen):
 
         # almeno una delle carte coincidenti
         # deve appartenere all'avversario
+        # almeno una corrispondenza deve essere
+        # una vera carta appartenente all'avversario;
+        # il muro da solo non può essere catturato
         opponent_is_involved = any(
-            neighbour_owner != placed_owner
+            neighbour_owner not in (
+                placed_owner,
+                "wall"
+            )
             for (
                 neighbour_row,
                 neighbour_column,
@@ -1011,7 +1039,10 @@ class MatchScreen(Screen):
                 neighbour_column,
                 neighbour_owner
             ) in matching_neighbours
-            if neighbour_owner != placed_owner
+            if neighbour_owner not in (
+                placed_owner,
+                "wall"
+            )
         ]
     
     # individua le catture normali, Same e Plus
@@ -1413,13 +1444,19 @@ class MatchScreen(Screen):
             ]
         )
 
-        # conservo separatamente soltanto le carte
-        # catturate direttamente da Same o Plus
-        self.pending_combo_source_positions = list(
-            completed_rule_effect[
-                "combo_source_positions"
-            ]
-        )        
+        # aggiungo le nuove sorgenti a quelle eventualmente
+        # prodotte da una regola precedente nella stessa mossa
+        for combo_source_position in completed_rule_effect[
+            "combo_source_positions"
+        ]:
+
+            if (
+                combo_source_position
+                not in self.pending_combo_source_positions
+            ):
+                self.pending_combo_source_positions.append(
+                    combo_source_position
+                )  
 
         # se la regola possiede carte da catturare,
         # avvio il relativo flip simultaneo
@@ -1445,47 +1482,6 @@ class MatchScreen(Screen):
         if not self.start_next_rule_effect():
             self.finish_capture_resolution()
         
-    # aggiorna il feedback visivo della regola Same
-    # e avvia il flip dopo mezzo secondo
-    def update_same_rule_effect(self):
-
-        # interrompo se Same non è visualizzata
-        if not self.same_rule_effect_active:
-            return
-
-        current_time = pygame.time.get_ticks()
-
-        elapsed_time = (
-            current_time
-            - self.same_rule_effect_start_time
-        )
-
-        # mantengo il PNG visibile per 500 ms
-        if elapsed_time < self.same_rule_effect_duration:
-            return
-
-        # nascondo il PNG della regola
-        self.same_rule_effect_active = False
-
-        # recupero le carte che erano rimaste
-        # in attesa durante il feedback
-        self.flipping_card_positions = list(
-            self.pending_same_capture_positions
-        )
-
-        self.flip_new_owner = (
-            self.pending_same_new_owner
-        )
-
-        # pulisco i dati temporanei di Same
-        self.pending_same_capture_positions = []
-        self.pending_same_new_owner = None
-
-        # dopo la scomparsa del PNG
-        # avvio il normale flip delle carte
-        self.flip_phase = "front_shrinking"
-        self.flip_phase_start_time = current_time
-
     # aggiorna le quattro fasi del flip
     # delle carte catturate
     def update_capture_animation(self):
@@ -1549,6 +1545,20 @@ class MatchScreen(Screen):
                 self.flip_new_owner
             )
 
+
+            # Same e Plus devono essere risolte entrambe
+            # prima di iniziare l'eventuale catena Combo
+            if self.rule_resolution_queue:
+
+                # termino e pulisco il flip appena concluso
+                self.flip_phase = None
+                self.flipping_card_positions = []
+                self.flip_new_owner = None
+
+                # mostro la prossima regola speciale
+                self.start_next_rule_effect()
+                return
+            
             # calcolo la nuova ondata di Combo usando
             # soltanto le sorgenti di Same, Plus
             # oppure della precedente ondata di Combo
@@ -1607,6 +1617,78 @@ class MatchScreen(Screen):
 
         # ogni nuova fase parte dal momento attuale
         self.flip_phase_start_time = current_time
+
+    # ricostruisce le due mani per un nuovo round
+    # di Sudden Death usando i proprietari finali
+    def get_sudden_death_hands(self):
+
+        # carte che appartengono al giocatore
+        # e all'avversario alla fine del round
+        new_player_cards = []
+        new_opponent_cards = []
+
+        # recupero le nove carte posizionate
+        # sul tabellone
+        for row in range(3):
+            for column in range(3):
+
+                board_cell = self.board.get_cell(
+                    row,
+                    column
+                )
+
+                if board_cell is None:
+                    continue
+
+                card = board_cell["card"]
+                owner = board_cell["owner"]
+
+                # le carte blu passano al giocatore
+                if owner == "player":
+                    new_player_cards.append(
+                        card
+                    )
+
+                # le carte rosse passano all'avversario
+                else:
+                    new_opponent_cards.append(
+                        card
+                    )
+
+        # aggiungo le eventuali carte del giocatore
+        # che non sono state posizionate sul tabellone
+        for i, card in enumerate(self.player_cards):
+
+            if i not in self.played_player_card_indices:
+                new_player_cards.append(
+                    card
+                )
+
+        # aggiungo le eventuali carte dell'avversario
+        # che non sono state posizionate sul tabellone
+        for i, card in enumerate(self.opponent_cards):
+
+            if i not in self.played_opponent_card_indices:
+                new_opponent_cards.append(
+                    card
+                )
+
+        # un pareggio deve produrre esattamente
+        # cinque carte per ciascun giocatore
+        if (
+            len(new_player_cards) != 5
+            or len(new_opponent_cards) != 5
+        ):
+            raise ValueError(
+                "Invalid Sudden Death hands: "
+                f"player={len(new_player_cards)}, "
+                f"opponent={len(new_opponent_cards)}"
+            )
+
+        return (
+            new_player_cards,
+            new_opponent_cards
+        )
 
     # determina il risultato confrontando
     # i punteggi finali dei due giocatori
@@ -1962,19 +2044,52 @@ class MatchScreen(Screen):
                 and result_confirmed
             ):
 
-                # con un pareggio non avviene alcuno scambio;
-                # apro direttamente il pannello Play Again
+                # con un pareggio non avviene alcuno scambio
                 if self.match_result == "draw":
 
-                    self.state.open_panel(
-                        PlayAgainPanel(
+                    # con Sudden Death attiva redistribuisco
+                    # le stesse dieci carte secondo il colore finale
+                    if self.match_rules["special"]["Sudden Death"]:
+
+                        (
+                            sudden_death_player_cards,
+                            sudden_death_opponent_cards
+                        ) = self.get_sudden_death_hands()
+
+                        # creo immediatamente un nuovo round,
+                        # conservando entrambe le mani redistribuite
+                        sudden_death_match = MatchScreen(
                             self.width,
                             self.height,
                             self.state,
-                            self.player_cards,
-                            self.match_rules
+                            sudden_death_player_cards,
+                            self.match_rules,
+                            opponent_cards=(
+                                sudden_death_opponent_cards
+                            ),
+                            preserve_hands=True
                         )
-                    )
+
+                        self.state.change_screen(
+                            sudden_death_match
+                        )
+
+                        # assicuro che non rimangano
+                        # pannelli aperti dal round precedente
+                        self.state.close_panel()
+
+                    # senza Sudden Death mantengo
+                    # il normale comportamento Play Again
+                    else:
+                        self.state.open_panel(
+                            PlayAgainPanel(
+                                self.width,
+                                self.height,
+                                self.state,
+                                self.player_cards,
+                                self.match_rules
+                            )
+                        )
 
                 # con vittoria o sconfitta passo
                 # invece alla schermata dello scambio
