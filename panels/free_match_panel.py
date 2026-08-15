@@ -9,7 +9,8 @@ from config import ACTIVE_CARD_SETS
 from panels.play_confirmation_panel import PlayConfirmationPanel
 from ui.animated_hand_cursor import AnimatedHandCursor # cursore animato riutilizzabile
 from panels.panel import Panel
-
+# schermata nella quale viene giocata la partita
+from screens.match_screen import MatchScreen
 
 # pannello di preparazione della modalità Free Match
 class FreeMatchPanel(Panel):
@@ -359,7 +360,57 @@ class FreeMatchPanel(Panel):
             and not self.extra_rules["Plus"]
         ):
             self.extra_rules["Combo"] = False
-            
+
+    # raccoglie tutte le regole attualmente configurate
+    def get_match_rules(self):
+
+        return {
+            "cards": self.cards_options[
+                self.selected_cards_option
+            ],
+            "hand": self.hand_options[
+                self.selected_hand_option
+            ],
+            "extra": self.extra_rules.copy(),
+            "special": self.special_rules.copy(),
+            "trade": self.trade_rules[
+                self.selected_trade_rule
+            ]
+        }
+
+    # continua dalla configurazione delle regole
+    def continue_from_rules(self):
+
+        # recupero la modalità della mano selezionata
+        selected_hand_rule = self.hand_options[
+            self.selected_hand_option
+        ]
+
+        # con Random salto completamente
+        # la selezione manuale delle carte
+        if selected_hand_rule == "Random":
+
+            match_screen = MatchScreen(
+                self.width,
+                self.height,
+                self.state,
+                [],
+                self.get_match_rules()
+            )
+
+            # attivo direttamente la partita
+            self.state.change_screen(
+                match_screen
+            )
+
+            # chiudo il Free Match Panel
+            self.state.close_panel()
+
+        # con Choice passo normalmente
+        # alla selezione manuale delle cinque carte
+        else:
+            self.current_phase = "card_selection"
+
     # gestisce gli eventi del pannello
     def handle_events(self, event):
 
@@ -638,7 +689,7 @@ class FreeMatchPanel(Panel):
                 self.navigation_rows[self.selected_row] == "continue"
                 and event.key == pygame.K_RETURN
             ):
-                self.current_phase = "card_selection"
+                self.continue_from_rules()
 
 
 
@@ -960,12 +1011,12 @@ class FreeMatchPanel(Panel):
                         break
 
                 # se clicco su Continue,
-                # passo alla fase di selezione delle carte
+                # applico il comportamento di Choice oppure Random
                 if (
                     self.continue_rect is not None
                     and self.continue_rect.collidepoint(event.pos)
                 ):
-                    self.current_phase = "card_selection"
+                    self.continue_from_rules()
                     
             # il tasto destro chiude il pannello
             elif event.button == 3:

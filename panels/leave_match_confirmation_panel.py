@@ -8,7 +8,13 @@ from ui.animated_hand_cursor import AnimatedHandCursor
 # di abbandonare una partita in corso
 class LeaveMatchConfirmationPanel(Panel):
 
-    def __init__(self, width, height, state):
+    def __init__(
+        self,
+        width,
+        height,
+        state,
+        match_rules
+    ):
 
         # dimensioni della finestra
         self.width = width
@@ -17,9 +23,13 @@ class LeaveMatchConfirmationPanel(Panel):
         # stato globale del gioco
         self.state = state
 
+        # conservo le regole della partita
+        # per mostrarle nel riepilogo del pannello
+        self.match_rules = match_rules
+
         # dimensioni del pannello
-        self.panel_width = 520
-        self.panel_height = 200
+        self.panel_width = 620
+        self.panel_height = 400
 
         # colori del pannello
         self.panel_color = (70, 70, 70)
@@ -34,6 +44,12 @@ class LeaveMatchConfirmationPanel(Panel):
         self.option_font = pygame.font.SysFont(
             "Arial",
             28
+        )
+
+        # font usato per il riepilogo delle regole
+        self.rules_font = pygame.font.SysFont(
+            "Arial",
+            25
         )
 
         # opzioni disponibili
@@ -183,7 +199,73 @@ class LeaveMatchConfirmationPanel(Panel):
             2
         )
 
-        # messaggio di conferma
+        # recupero soltanto le regole Extra attive
+        active_extra_rules = [
+            rule_name
+            for rule_name, enabled
+            in self.match_rules["extra"].items()
+            if enabled
+        ]
+
+        # recupero soltanto le regole Special attive
+        active_special_rules = [
+            rule_name
+            for rule_name, enabled
+            in self.match_rules["special"].items()
+            if enabled
+        ]
+
+        # se non ci sono regole attive mostro None
+        extra_text = (
+            ", ".join(active_extra_rules)
+            if active_extra_rules
+            else "None"
+        )
+
+        special_text = (
+            ", ".join(active_special_rules)
+            if active_special_rules
+            else "None"
+        )
+
+        # preparo le tre righe del riepilogo
+        rules_summary = [
+            f"Extra: {extra_text}",
+            f"Special: {special_text}",
+            f"Trade: {self.match_rules['trade']}"
+        ]
+
+        # disegno il riepilogo allineato a sinistra
+        for i, rule_text in enumerate(rules_summary):
+
+            rule_surface = self.rules_font.render(
+                rule_text,
+                True,
+                (255, 255, 255)
+            )
+
+            rule_rect = rule_surface.get_rect(
+                midleft=(
+                    x + 45,
+                    y + 55 + i * 50
+                )
+            )
+
+            screen.blit(
+                rule_surface,
+                rule_rect
+            )
+
+        # disegno una linea di separazione
+        pygame.draw.line(
+            screen,
+            (180, 180, 180),
+            (x + 35, y + 205),
+            (x + self.panel_width - 35, y + 205),
+            2
+        )
+
+        # preparo la domanda di conferma
         message_surface = self.message_font.render(
             "Return to the main menu?",
             True,
@@ -193,7 +275,7 @@ class LeaveMatchConfirmationPanel(Panel):
         message_rect = message_surface.get_rect(
             center=(
                 self.width // 2,
-                y + 65
+                y + 260
             )
         )
 
@@ -221,7 +303,7 @@ class LeaveMatchConfirmationPanel(Panel):
             option_rect = option_surface.get_rect(
                 center=(
                     self.width // 2 - 80 + i * 160,
-                    y + 140
+                    y + 340
                 )
             )
 

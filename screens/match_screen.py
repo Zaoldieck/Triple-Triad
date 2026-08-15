@@ -1,5 +1,6 @@
 import pygame
 import random
+import math
 
 from screens.screen import Screen
 from game.board import Board
@@ -36,18 +37,59 @@ class MatchScreen(Screen):
         # stato globale del gioco
         self.state = state
 
-        # conservo una copia delle cinque carte
-        # selezionate dal giocatore
-        self.player_cards = list(
-            player_cards
-        )
-
         # carico tutte le carte appartenenti
         # ai set attivi della versione corrente
         available_opponent_cards = load_cards(
             "data/cards.json",
             ACTIVE_CARD_SETS
         )
+
+        # con Hand Random genero cinque carte differenti
+        # tra tutte quelle attualmente possedute
+        if match_rules["hand"] == "Random":
+
+            owned_player_cards = []
+
+            # filtro tutte le carte dei set attivi
+            # controllando la quantità posseduta
+            for card in available_opponent_cards:
+
+                quantity = (
+                    self.state.card_collection.get_quantity(
+                        card
+                    )
+                )
+
+                # None indica una quantità infinita;
+                # accetto inoltre quantità comprese tra 1 e 99
+                if (
+                    quantity is None
+                    or 1 <= quantity <= 99
+                ):
+                    owned_player_cards.append(
+                        card
+                    )
+
+            # una partita richiede almeno cinque
+            # carte differenti disponibili
+            if len(owned_player_cards) < 5:
+                raise ValueError(
+                    "Not enough owned cards "
+                    "to generate a random player hand"
+                )
+
+            # estraggo cinque carte differenti
+            self.player_cards = random.sample(
+                owned_player_cards,
+                5
+            )
+
+        # con Hand Choice utilizzo invece
+        # le carte selezionate manualmente
+        else:
+            self.player_cards = list(
+                player_cards
+            )
 
         # per ora l'avversario può utilizzare
         # soltanto carte di rarità 1
@@ -99,13 +141,14 @@ class MatchScreen(Screen):
         # superfici grafiche delle carte dell'avversario
         self.opponent_card_surfaces = []
 
-        # controllo se le carte avversarie devono essere visibili
-        opponent_cards_face_up = (
+        # conservo questa informazione perché servirà
+        # anche al pannello con il nome della carta
+        self.opponent_cards_face_up = (
             match_rules["cards"] == "Face Up"
         )
 
         # se le carte sono coperte, carico il retro una sola volta
-        if not opponent_cards_face_up:
+        if not self.opponent_cards_face_up:
 
             opponent_card_back = pygame.image.load(
                 CARD_BACK_PATH
@@ -120,7 +163,7 @@ class MatchScreen(Screen):
         for card in self.opponent_cards:
 
             # con Face Up mostro il fronte rosso
-            if opponent_cards_face_up:
+            if self.opponent_cards_face_up:
                 card_surface = render_card(
                     card,
                     "red"
@@ -161,7 +204,7 @@ class MatchScreen(Screen):
         self.opponent_phase_start_time = 0
 
         # durata di ogni fase dell'avversario
-        self.opponent_phase_duration = 500
+        self.opponent_phase_duration = 1000
 
         # rettangoli delle carte del giocatore;
         # serviranno successivamente per mouse e selezione
@@ -178,6 +221,30 @@ class MatchScreen(Screen):
         # indice della carta attualmente indicata
         # nella mano del giocatore
         self.selected_player_card = 0
+
+        # dimensioni del pannello che mostra
+        # il nome della carta indicata
+        self.card_name_panel_width = 390
+        self.card_name_panel_height = 64
+
+        # colori coerenti con gli altri pannelli
+        self.card_name_panel_color = (
+            70,
+            70,
+            70
+        )
+
+        self.card_name_panel_border_color = (
+            255,
+            255,
+            255
+        )
+
+        # font usato per il nome della carta
+        self.card_name_panel_font = pygame.font.SysFont(
+            "Arial",
+            28
+        )
 
         # manina animata usata durante la partita
         self.hand_cursor = AnimatedHandCursor(
@@ -205,15 +272,59 @@ class MatchScreen(Screen):
             75
         )
 
-        # preparo una freccia per ogni direzione
         self.turn_arrow_surfaces = {
             "left": self.create_turn_arrow_surface(
                 "left"
             ),
             "right": self.create_turn_arrow_surface(
                 "right"
+            ),
+            "down": self.create_turn_arrow_surface(
+                "down"
             )
         }
+
+        # dimensioni dell'indicatore permanente
+        # mostrato sopra la mano del giocatore attivo
+        self.active_turn_indicator_size = (
+            54,
+            42
+        )
+
+        # proprietario del turno indicato dal triangolo;
+        # viene assegnato al termine dell'animazione iniziale
+        self.active_turn_owner = None
+
+        # velocità della pulsazione orizzontale continua
+        self.active_turn_indicator_speed = 5.0
+
+        # fase del trasferimento dell'indicatore:
+        # None, leaving, waiting oppure entering
+        self.turn_indicator_transition_phase = None
+
+        # giocatore che riceverà il turno
+        # al termine del trasferimento
+        self.pending_turn_owner = None
+
+        # momento iniziale della fase corrente
+        self.turn_indicator_transition_start_time = 0
+
+        # durata della salita fuori dallo schermo
+        self.turn_indicator_leave_duration = 300
+
+        # durata della pausa fuori dallo schermo
+        self.turn_indicator_wait_duration = 200
+
+        # durata della discesa sul lato opposto
+        self.turn_indicator_enter_duration = 300
+
+        # posizione verticale normale dell'indicatore
+        self.turn_indicator_rest_y = 32
+
+        # posizione verticale completamente fuori dallo schermo
+        self.turn_indicator_hidden_y = (
+            -self.active_turn_indicator_size[1]
+        )
 
         # scelgo casualmente chi inizierà la partita;
         # la scelta rimane nascosta durante l'animazione
@@ -514,11 +625,19 @@ class MatchScreen(Screen):
             ]
 
         # punti della freccia rivolta a destra
-        else:
+        elif direction == "right":
             arrow_points = [
                 (8, 8),
                 (arrow_width - 8, arrow_height // 2),
                 (8, arrow_height - 8)
+            ]
+
+        # punti del triangolo rivolto verso il basso
+        else:
+            arrow_points = [
+                (8, 8),
+                (arrow_width - 8, 8),
+                (arrow_width // 2, arrow_height - 8)
             ]
 
         pygame.draw.polygon(
@@ -595,7 +714,118 @@ class MatchScreen(Screen):
         )
 
         return colored_surface
+    # restituisce le posizioni catturate
+    # dall'eventuale attivazione della regola Same
+    def get_same_capture_positions(
+        self,
+        row,
+        column
+    ):
 
+        # Same deve essere attiva nelle regole Extra
+        if not self.match_rules["extra"]["Same"]:
+            return []
+
+        # recupero la carta appena piazzata
+        placed_cell = self.board.get_cell(
+            row,
+            column
+        )
+
+        if placed_cell is None:
+            return []
+
+        placed_card = placed_cell["card"]
+        placed_owner = placed_cell["owner"]
+
+        # conterrà tutte le carte adiacenti
+        # i cui valori coincidono
+        matching_neighbours = []
+
+        directions = [
+            (-1, 0, "top", "bottom"),
+            (0, 1, "right", "left"),
+            (1, 0, "bottom", "top"),
+            (0, -1, "left", "right")
+        ]
+
+        # confronto tutti i lati adiacenti
+        for (
+            row_offset,
+            column_offset,
+            placed_side,
+            neighbour_side
+        ) in directions:
+
+            neighbour_row = row + row_offset
+            neighbour_column = column + column_offset
+
+            neighbour_cell = self.board.get_cell(
+                neighbour_row,
+                neighbour_column
+            )
+
+            # per ora ignoro i bordi;
+            # verranno gestiti successivamente da Same Wall
+            if neighbour_cell is None:
+                continue
+
+            neighbour_card = neighbour_cell["card"]
+
+            placed_value = getattr(
+                placed_card,
+                placed_side
+            )
+
+            neighbour_value = getattr(
+                neighbour_card,
+                neighbour_side
+            )
+
+            # salvo ogni lato con valori identici
+            if placed_value == neighbour_value:
+                matching_neighbours.append(
+                    (
+                        neighbour_row,
+                        neighbour_column,
+                        neighbour_cell["owner"]
+                    )
+                )
+
+        # Same richiede almeno due coincidenze
+        if len(matching_neighbours) < 2:
+            return []
+
+        # almeno una delle carte coincidenti
+        # deve appartenere all'avversario
+        opponent_is_involved = any(
+            neighbour_owner != placed_owner
+            for (
+                neighbour_row,
+                neighbour_column,
+                neighbour_owner
+            ) in matching_neighbours
+        )
+
+        if not opponent_is_involved:
+            return []
+
+        # restituisco soltanto le carte avversarie;
+        # quelle alleate contribuiscono alla regola
+        # ma non devono cambiare proprietario
+        return [
+            (
+                neighbour_row,
+                neighbour_column
+            )
+            for (
+                neighbour_row,
+                neighbour_column,
+                neighbour_owner
+            ) in matching_neighbours
+            if neighbour_owner != placed_owner
+        ]
+    
     # individua le catture base dopo il piazzamento
     # e avvia un unico ciclo di flip simultaneo
     def resolve_basic_captures(
@@ -764,10 +994,16 @@ class MatchScreen(Screen):
             if self.input_mode == "match_over":
                 self.determine_match_result()
 
-            # se deve iniziare il turno avversario,
-            # faccio partire da questo momento la sua attesa
-            if self.input_mode == "opponent_turn":
-                self.opponent_phase_start_time = current_time
+            # dopo il flip avvio il trasferimento
+            # che era rimasto in attesa
+            if (
+                self.input_mode
+                == "waiting_for_turn_transition"
+                and self.pending_turn_owner is not None
+            ):
+                self.start_turn_indicator_transition(
+                    self.pending_turn_owner
+                )
 
             return
 
@@ -868,7 +1104,7 @@ class MatchScreen(Screen):
 
         # confronto la carta appena piazzata
         # con tutte le carte avversarie adiacenti
-        self.resolve_basic_captures(
+        capture_started = self.resolve_basic_captures(
             self.selected_board_row,
             self.selected_board_column
         )
@@ -884,18 +1120,101 @@ class MatchScreen(Screen):
         if self.check_match_finished():
             return
 
-        # passo al turno dell'avversario
-        self.input_mode = "opponent_turn"
+        # se è iniziata una cattura, attendo prima
+        # che tutte le carte abbiano terminato il flip
+        if capture_started:
+            self.input_mode = "waiting_for_turn_transition"
+            self.pending_turn_owner = "opponent"
 
-        # inizialmente attendo mezzo secondo
-        # prima di mostrare la carta scelta
-        self.opponent_turn_phase = "waiting_to_select"
+        # senza catture posso iniziare immediatamente
+        # il trasferimento dell'indicatore
+        else:
+            self.start_turn_indicator_transition(
+                "opponent"
+            )
 
-        # salvo il momento di inizio della fase
-        self.opponent_phase_start_time = (
+    # avvia il trasferimento dell'indicatore
+    # verso il giocatore che riceverà il turno
+    def start_turn_indicator_transition(
+        self,
+        new_turn_owner
+    ):
+
+        # salvo il prossimo proprietario del turno
+        self.pending_turn_owner = new_turn_owner
+
+        # inizio facendo salire l'indicatore attuale
+        self.turn_indicator_transition_phase = "leaving"
+
+        # salvo il momento di inizio della salita
+        self.turn_indicator_transition_start_time = (
             pygame.time.get_ticks()
         )
 
+        # blocco temporaneamente gli input e i turni
+        self.input_mode = "turn_transition"
+
+    # aggiorna la salita, la pausa e la discesa
+    # dell'indicatore del turno
+    def update_turn_indicator_transition(self):
+
+        current_time = pygame.time.get_ticks()
+
+        elapsed_time = (
+            current_time
+            - self.turn_indicator_transition_start_time
+        )
+
+        # attendo che l'indicatore completi la salita
+        if self.turn_indicator_transition_phase == "leaving":
+
+            if elapsed_time < self.turn_indicator_leave_duration:
+                return
+
+            # raggiunta la parte superiore,
+            # inizio la breve pausa fuori dallo schermo
+            self.turn_indicator_transition_phase = "waiting"
+            self.turn_indicator_transition_start_time = current_time
+            return
+
+        # mantengo l'indicatore fuori dallo schermo
+        if self.turn_indicator_transition_phase == "waiting":
+
+            if elapsed_time < self.turn_indicator_wait_duration:
+                return
+
+            # terminata la pausa, comincio a farlo
+            # scendere sul lato del nuovo giocatore
+            self.turn_indicator_transition_phase = "entering"
+            self.turn_indicator_transition_start_time = current_time
+            return
+
+        # attendo il completamento della discesa
+        if self.turn_indicator_transition_phase == "entering":
+
+            if elapsed_time < self.turn_indicator_enter_duration:
+                return
+
+            # assegno definitivamente il turno
+            # al nuovo proprietario
+            self.active_turn_owner = self.pending_turn_owner
+
+            # termino e pulisco il trasferimento
+            self.pending_turn_owner = None
+            self.turn_indicator_transition_phase = None
+
+            # se il turno passa all'avversario,
+            # avvio la sua prima fase di attesa
+            if self.active_turn_owner == "opponent":
+                self.input_mode = "opponent_turn"
+                self.opponent_turn_phase = "waiting_to_select"
+                self.opponent_phase_start_time = current_time
+
+            # il passaggio al giocatore verrà utilizzato
+            # anche al termine del turno avversario
+            else:
+                self.input_mode = "hand"
+                
     # aggiorna l'animazione iniziale
     # che determina chi comincia la partita
     def update_starting_turn_animation(self):
@@ -912,6 +1231,10 @@ class MatchScreen(Screen):
                 < self.turn_arrow_result_pause
             ):
                 return
+
+            # terminata l'estrazione, mostro l'indicatore
+            # permanente sopra la mano di chi inizia
+            self.active_turn_owner = self.starting_turn_owner
 
             # se è stato scelto il giocatore,
             # attivo i controlli della sua mano
@@ -1068,7 +1391,8 @@ class MatchScreen(Screen):
                         LeaveMatchConfirmationPanel(
                             self.width,
                             self.height,
-                            self.state
+                            self.state,
+                            self.match_rules
                         )
                     )
 
@@ -1261,7 +1585,8 @@ class MatchScreen(Screen):
                     LeaveMatchConfirmationPanel(
                         self.width,
                         self.height,
-                        self.state
+                        self.state,
+                        self.match_rules
                     )
                 )
 
@@ -1278,6 +1603,17 @@ class MatchScreen(Screen):
         # su qualsiasi avanzamento del turno
         if self.flip_phase is not None:
             self.update_capture_animation()
+            return
+
+        # durante il trasferimento aggiorno soltanto
+        # il movimento dell'indicatore del turno
+        if self.input_mode == "turn_transition":
+            self.update_turn_indicator_transition()
+            return
+
+        # se attendo la conclusione di un flip,
+        # non devo ancora iniziare il nuovo turno
+        if self.input_mode == "waiting_for_turn_transition":
             return
 
         # interrompo se non è il turno dell'avversario
@@ -1375,7 +1711,7 @@ class MatchScreen(Screen):
 
                 # confronto la carta avversaria appena piazzata
                 # con tutte le carte del giocatore adiacenti
-                self.resolve_basic_captures(
+                capture_started = self.resolve_basic_captures(
                     self.opponent_target_row,
                     self.opponent_target_column
                 )
@@ -1398,12 +1734,79 @@ class MatchScreen(Screen):
                 self.opponent_target_row = None
                 self.opponent_target_column = None
 
-                # torno alla selezione della mano del giocatore
-                self.input_mode = "hand"
+                # sposto la selezione sulla prima carta
+                # del giocatore ancora disponibile
+                self.move_player_card_selection(1)
 
-                # la carta giocata dal giocatore non è più selezionabile;
-                # sposto la selezione sulla prima carta disponibile successiva
-                self.move_player_card_selection(1)   
+                # se l'avversario ha catturato delle carte,
+                # attendo il completamento del loro flip
+                if capture_started:
+                    self.input_mode = "waiting_for_turn_transition"
+                    self.pending_turn_owner = "player"
+
+                # senza catture posso iniziare immediatamente
+                # il trasferimento verso il giocatore
+                else:
+                    self.start_turn_indicator_transition(
+                        "player"
+                    )
+
+    # disegna nella parte bassa dello schermo
+    # il pannello con il nome della carta indicata
+    def draw_card_name_panel(
+        self,
+        screen,
+        card_name
+    ):
+
+        # centro il pannello orizzontalmente
+        # lasciando un piccolo margine inferiore
+        panel_rect = pygame.Rect(
+            0,
+            0,
+            self.card_name_panel_width,
+            self.card_name_panel_height
+        )
+
+        panel_rect.center = (
+            self.width // 2,
+            self.height - 40
+        )
+
+        # disegno lo sfondo del pannello
+        pygame.draw.rect(
+            screen,
+            self.card_name_panel_color,
+            panel_rect
+        )
+
+        # disegno il bordo bianco
+        pygame.draw.rect(
+            screen,
+            self.card_name_panel_border_color,
+            panel_rect,
+            2
+        )
+
+        # preparo il nome della carta
+        card_name_surface = (
+            self.card_name_panel_font.render(
+                card_name,
+                True,
+                (255, 255, 255)
+            )
+        )
+
+        # centro il testo nel pannello
+        card_name_rect = card_name_surface.get_rect(
+            center=panel_rect.center
+        )
+
+        # disegno il nome
+        screen.blit(
+            card_name_surface,
+            card_name_rect
+        )
 
     # disegna la schermata della partita
     def draw(self, screen):
@@ -1600,7 +2003,7 @@ class MatchScreen(Screen):
 
         # posizione iniziale della mano del giocatore
         player_hand_x = 100
-        player_hand_y = 10
+        player_hand_y = 35
 
         # distanza verticale ridotta per lasciare
         # spazio libero sotto la mano del giocatore
@@ -1743,6 +2146,67 @@ class MatchScreen(Screen):
                     card_surface,
                     card_rect
                 )
+
+        # nome da mostrare nel pannello descrittivo;
+        # None significa che il pannello resta nascosto
+        displayed_card_name = None
+
+        # quando il giocatore sta scegliendo dalla propria mano,
+        # mostro la carta spostata lateralmente
+        if (
+            self.input_mode == "hand"
+            and self.player_cards
+            and self.selected_player_card
+            not in self.played_player_card_indices
+        ):
+
+            selected_player_card = self.player_cards[
+                self.selected_player_card
+            ]
+
+            displayed_card_name = (
+                selected_player_card.name
+            )
+
+        # durante i primi 500 ms visibili del turno avversario,
+        # mostro il nome della carta spostata lateralmente
+        elif (
+            self.input_mode == "opponent_turn"
+            and self.opponent_turn_phase
+            == "showing_selection"
+            and self.selected_opponent_card is not None
+            and self.opponent_cards_face_up
+        ):
+
+            selected_opponent_card = self.opponent_cards[
+                self.selected_opponent_card
+            ]
+
+            displayed_card_name = (
+                selected_opponent_card.name
+            )
+
+        # quando la manina si trova sul tabellone,
+        # mostro il nome soltanto se la casella è occupata
+        elif self.input_mode == "board":
+
+            indicated_board_cell = self.board.get_cell(
+                self.selected_board_row,
+                self.selected_board_column
+            )
+
+            if indicated_board_cell is not None:
+                displayed_card_name = (
+                    indicated_board_cell["card"].name
+                )
+
+        # disegno il pannello soltanto quando
+        # esiste realmente un nome da mostrare
+        if displayed_card_name is not None:
+            self.draw_card_name_panel(
+                screen,
+                displayed_card_name
+            )
 
         # recupero il numero azzurro del giocatore
         player_score_surface = (
@@ -1921,4 +2385,119 @@ class MatchScreen(Screen):
             screen.blit(
                 turn_arrow_surface,
                 turn_arrow_rect
+            )
+
+        # dopo la scelta iniziale mostro un triangolo
+        # sopra la mano del giocatore che possiede il turno
+        if self.active_turn_owner is not None:
+
+            # recupero il tempo per creare
+            # una pulsazione continua e regolare
+            elapsed_time = (
+                pygame.time.get_ticks() / 1000.0
+            )
+
+            # la larghezza oscilla dal 100% al 50%;
+            # l'altezza rimane sempre invariata
+            width_factor = (
+                0.75
+                + 0.25 * math.cos(
+                    elapsed_time
+                    * self.active_turn_indicator_speed
+                )
+            )
+
+            animated_indicator_width = max(
+                1,
+                int(
+                    self.active_turn_indicator_size[0]
+                    * width_factor
+                )
+            )
+
+            # recupero il triangolo rivolto verso il basso
+            active_turn_surface = self.turn_arrow_surfaces[
+                "down"
+            ]
+
+            # applico soltanto lo shrink orizzontale
+            active_turn_surface = pygame.transform.smoothscale(
+                active_turn_surface,
+                (
+                    animated_indicator_width,
+                    self.active_turn_indicator_size[1]
+                )
+            )
+
+            # normalmente l'indicatore rimane sopra
+            # la mano del proprietario attuale
+            indicator_owner = self.active_turn_owner
+            indicator_y = self.turn_indicator_rest_y
+
+            # durante la salita mantengo il vecchio lato
+            if self.turn_indicator_transition_phase == "leaving":
+
+                transition_progress = (
+                    pygame.time.get_ticks()
+                    - self.turn_indicator_transition_start_time
+                ) / self.turn_indicator_leave_duration
+
+                transition_progress = max(
+                    0.0,
+                    min(1.0, transition_progress)
+                )
+
+                indicator_y = int(
+                    self.turn_indicator_rest_y
+                    + (
+                        self.turn_indicator_hidden_y
+                        - self.turn_indicator_rest_y
+                    ) * transition_progress
+                )
+
+            # durante la pausa rimane fuori dallo schermo
+            elif self.turn_indicator_transition_phase == "waiting":
+                indicator_y = self.turn_indicator_hidden_y
+
+            # durante la discesa utilizzo già il nuovo lato
+            elif self.turn_indicator_transition_phase == "entering":
+
+                indicator_owner = self.pending_turn_owner
+
+                transition_progress = (
+                    pygame.time.get_ticks()
+                    - self.turn_indicator_transition_start_time
+                ) / self.turn_indicator_enter_duration
+
+                transition_progress = max(
+                    0.0,
+                    min(1.0, transition_progress)
+                )
+
+                indicator_y = int(
+                    self.turn_indicator_hidden_y
+                    + (
+                        self.turn_indicator_rest_y
+                        - self.turn_indicator_hidden_y
+                    ) * transition_progress
+                )
+
+            # scelgo il centro della colonna corretta
+            if indicator_owner == "player":
+                indicator_x = 175
+            else:
+                indicator_x = 1105
+
+            # posiziono l'indicatore mantenendo attiva
+            # anche la pulsazione orizzontale
+            active_turn_rect = active_turn_surface.get_rect(
+                center=(
+                    indicator_x,
+                    indicator_y
+                )
+            )
+
+            screen.blit(
+                active_turn_surface,
+                active_turn_rect
             )
