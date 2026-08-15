@@ -184,9 +184,79 @@ class MatchScreen(Screen):
             "assets/images/hand_cursor.png"
         )
 
-        # modalità attuale dei controlli:
-        # hand seleziona una carta, board seleziona una casella
-        self.input_mode = "hand"
+        # dimensioni complete della freccia
+        # che seleziona chi inizia la partita
+        self.turn_arrow_size = (
+            90,
+            70
+        )
+
+        # colori della sfumatura verticale:
+        # rosso chiaro sopra e rosso medio sotto
+        self.turn_arrow_top_color = (
+            255,
+            155,
+            155
+        )
+
+        self.turn_arrow_bottom_color = (
+            195,
+            75,
+            75
+        )
+
+        # preparo una freccia per ogni direzione
+        self.turn_arrow_surfaces = {
+            "left": self.create_turn_arrow_surface(
+                "left"
+            ),
+            "right": self.create_turn_arrow_surface(
+                "right"
+            )
+        }
+
+        # scelgo casualmente chi inizierà la partita;
+        # la scelta rimane nascosta durante l'animazione
+        self.starting_turn_owner = random.choice(
+            [
+                "player",
+                "opponent"
+            ]
+        )
+
+        # inizialmente la freccia è rivolta a sinistra
+        self.turn_arrow_direction = "left"
+
+        # il flip comincia restringendo la freccia
+        self.turn_arrow_phase = "shrinking"
+
+        # momento iniziale della fase corrente
+        self.turn_arrow_phase_start_time = (
+            pygame.time.get_ticks()
+        )
+
+        # numero di rotazioni complete già eseguite
+        self.turn_arrow_completed_flips = 0
+
+        # numero minimo di rotazioni prima
+        # di potersi fermare sul risultato
+        self.turn_arrow_minimum_flips = 14
+
+        # durata iniziale di metà rotazione;
+        # aumenterà gradualmente per simulare il rallentamento
+        self.turn_arrow_phase_duration = 45
+
+        # momento nel quale la freccia
+        # si sarà fermata sul risultato
+        self.turn_arrow_finished_time = None
+
+        # durata della pausa finale prima
+        # di iniziare il turno scelto
+        self.turn_arrow_result_pause = 500
+
+        # prima della partita mostro l'animazione
+        # che sceglie casualmente chi comincia
+        self.input_mode = "starting_turn_animation"
 
         # casella inizialmente indicata nel tabellone
         self.selected_board_row = 0
@@ -377,6 +447,96 @@ class MatchScreen(Screen):
                 result_name
             ] = result_surface
 
+    # costruisce una freccia triangolare
+    # con una sfumatura verticale rossa
+    def create_turn_arrow_surface(self, direction):
+
+        arrow_width = self.turn_arrow_size[0]
+        arrow_height = self.turn_arrow_size[1]
+
+        # superficie che conterrà la sfumatura
+        gradient_surface = pygame.Surface(
+            self.turn_arrow_size,
+            pygame.SRCALPHA
+        )
+
+        # disegno la sfumatura una riga alla volta
+        for y in range(arrow_height):
+
+            gradient_progress = (
+                y / (arrow_height - 1)
+            )
+
+            red = int(
+                self.turn_arrow_top_color[0]
+                + (
+                    self.turn_arrow_bottom_color[0]
+                    - self.turn_arrow_top_color[0]
+                ) * gradient_progress
+            )
+
+            green = int(
+                self.turn_arrow_top_color[1]
+                + (
+                    self.turn_arrow_bottom_color[1]
+                    - self.turn_arrow_top_color[1]
+                ) * gradient_progress
+            )
+
+            blue = int(
+                self.turn_arrow_top_color[2]
+                + (
+                    self.turn_arrow_bottom_color[2]
+                    - self.turn_arrow_top_color[2]
+                ) * gradient_progress
+            )
+
+            pygame.draw.line(
+                gradient_surface,
+                (red, green, blue, 255),
+                (0, y),
+                (arrow_width, y)
+            )
+
+        # preparo una maschera trasparente
+        # con la forma triangolare della freccia
+        arrow_mask = pygame.Surface(
+            self.turn_arrow_size,
+            pygame.SRCALPHA
+        )
+
+        # punti della freccia rivolta a sinistra
+        if direction == "left":
+            arrow_points = [
+                (arrow_width - 8, 8),
+                (8, arrow_height // 2),
+                (arrow_width - 8, arrow_height - 8)
+            ]
+
+        # punti della freccia rivolta a destra
+        else:
+            arrow_points = [
+                (8, 8),
+                (arrow_width - 8, arrow_height // 2),
+                (8, arrow_height - 8)
+            ]
+
+        pygame.draw.polygon(
+            arrow_mask,
+            (255, 255, 255, 255),
+            arrow_points
+        )
+
+        # applico la forma triangolare
+        # alla superficie contenente la sfumatura
+        gradient_surface.blit(
+            arrow_mask,
+            (0, 0),
+            special_flags=pygame.BLEND_RGBA_MULT
+        )
+
+        return gradient_surface
+    
     # applica una sfumatura verticale alle parti bianche
     # di una superficie, mantenendo nero e trasparenza
     def apply_score_gradient(
@@ -736,6 +896,103 @@ class MatchScreen(Screen):
             pygame.time.get_ticks()
         )
 
+    # aggiorna l'animazione iniziale
+    # che determina chi comincia la partita
+    def update_starting_turn_animation(self):
+
+        current_time = pygame.time.get_ticks()
+
+        # quando la freccia si è fermata,
+        # attendo brevemente prima di iniziare
+        if self.turn_arrow_phase == "stopped":
+
+            if (
+                current_time
+                - self.turn_arrow_finished_time
+                < self.turn_arrow_result_pause
+            ):
+                return
+
+            # se è stato scelto il giocatore,
+            # attivo i controlli della sua mano
+            if self.starting_turn_owner == "player":
+                self.input_mode = "hand"
+
+            # se è stato scelto l'avversario,
+            # avvio normalmente il suo turno
+            else:
+                self.input_mode = "opponent_turn"
+                self.opponent_turn_phase = "waiting_to_select"
+                self.opponent_phase_start_time = current_time
+
+            # l'animazione iniziale è terminata
+            self.turn_arrow_phase = None
+            return
+
+        elapsed_time = (
+            current_time
+            - self.turn_arrow_phase_start_time
+        )
+
+        # aspetto il completamento
+        # della fase corrente
+        if elapsed_time < self.turn_arrow_phase_duration:
+            return
+
+        # la freccia è diventata sottile;
+        # cambio il lato verso il quale è rivolta
+        if self.turn_arrow_phase == "shrinking":
+
+            if self.turn_arrow_direction == "left":
+                self.turn_arrow_direction = "right"
+            else:
+                self.turn_arrow_direction = "left"
+
+            # ora la nuova freccia si riallarga
+            self.turn_arrow_phase = "expanding"
+            self.turn_arrow_phase_start_time = current_time
+            return
+
+        # la freccia ha recuperato
+        # la propria larghezza completa
+        if self.turn_arrow_phase == "expanding":
+
+            self.turn_arrow_completed_flips += 1
+
+            # direzione associata al risultato casuale
+            if self.starting_turn_owner == "player":
+                target_direction = "left"
+            else:
+                target_direction = "right"
+
+            # dopo il numero minimo di rotazioni,
+            # mi fermo appena raggiungo il risultato scelto
+            if (
+                self.turn_arrow_completed_flips
+                >= self.turn_arrow_minimum_flips
+                and self.turn_arrow_direction
+                == target_direction
+            ):
+                self.turn_arrow_phase = "stopped"
+                self.turn_arrow_finished_time = current_time
+                return
+
+            # mantengo veloci le prime rotazioni
+            # e rallento soltanto nella parte finale
+            completed_slow_flips = max(
+                0,
+                self.turn_arrow_completed_flips - 9
+            )
+
+            self.turn_arrow_phase_duration = min(
+                180,
+                45 + completed_slow_flips * 15
+            )
+
+            # avvio una nuova rotazione
+            self.turn_arrow_phase = "shrinking"
+            self.turn_arrow_phase_start_time = current_time
+
     # gestisce gli eventi della partita
     def handle_events(self, event):
 
@@ -1011,6 +1268,12 @@ class MatchScreen(Screen):
     # aggiorna la logica della partita
     def update(self):
 
+        # prima dell'inizio della partita,
+        # aggiorno soltanto la freccia 50:50
+        if self.input_mode == "starting_turn_animation":
+            self.update_starting_turn_animation()
+            return
+        
         # l'animazione di cattura ha la precedenza
         # su qualsiasi avanzamento del turno
         if self.flip_phase is not None:
@@ -1577,4 +1840,85 @@ class MatchScreen(Screen):
             screen.blit(
                 result_surface,
                 result_rect
+            )
+
+        # durante la selezione del primo turno,
+        # disegno la freccia al centro dello schermo
+        if (
+            self.input_mode == "starting_turn_animation"
+            and self.turn_arrow_phase is not None
+        ):
+
+            # normalmente la freccia mantiene
+            # la propria larghezza completa
+            animated_arrow_width = (
+                self.turn_arrow_size[0]
+            )
+
+            # shrinking ed expanding usano
+            # l'avanzamento della fase corrente
+            if self.turn_arrow_phase in (
+                "shrinking",
+                "expanding"
+            ):
+
+                arrow_progress = (
+                    pygame.time.get_ticks()
+                    - self.turn_arrow_phase_start_time
+                ) / self.turn_arrow_phase_duration
+
+                arrow_progress = max(
+                    0.0,
+                    min(1.0, arrow_progress)
+                )
+
+                # la freccia si restringe
+                # mantenendo invariata l'altezza
+                if self.turn_arrow_phase == "shrinking":
+                    animated_arrow_width = int(
+                        self.turn_arrow_size[0]
+                        * (1.0 - arrow_progress)
+                    )
+
+                # dopo aver cambiato direzione,
+                # la nuova freccia si riallarga
+                else:
+                    animated_arrow_width = int(
+                        self.turn_arrow_size[0]
+                        * arrow_progress
+                    )
+
+            # evito superfici larghe zero pixel
+            animated_arrow_width = max(
+                1,
+                animated_arrow_width
+            )
+
+            # recupero la freccia orientata
+            # nella direzione corrente
+            turn_arrow_surface = self.turn_arrow_surfaces[
+                self.turn_arrow_direction
+            ]
+
+            # ridimensiono soltanto la larghezza
+            turn_arrow_surface = pygame.transform.smoothscale(
+                turn_arrow_surface,
+                (
+                    animated_arrow_width,
+                    self.turn_arrow_size[1]
+                )
+            )
+
+            # mantengo la freccia centrata
+            # durante tutta la rotazione
+            turn_arrow_rect = turn_arrow_surface.get_rect(
+                center=(
+                    self.width // 2,
+                    self.height // 2
+                )
+            )
+
+            screen.blit(
+                turn_arrow_surface,
+                turn_arrow_rect
             )
