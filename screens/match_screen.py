@@ -554,6 +554,10 @@ class MatchScreen(Screen):
         # ogni elemento conterrà nome, catture e proprietario
         self.rule_resolution_queue = []
 
+        # carte catturate direttamente da Same o Plus;
+        # dopo il loro flip daranno origine alla Combo
+        self.pending_combo_source_positions = []
+
         # regola il cui PNG è attualmente visibile;
         # None significa che non è mostrato alcun feedback
         self.active_rule_effect = None
@@ -1128,7 +1132,8 @@ class MatchScreen(Screen):
             self.queue_rule_resolution(
                 "same",
                 same_batch,
-                placed_owner
+                placed_owner,
+                same_capture_positions
             )
 
             # se si è attivata anche Plus,
@@ -1143,11 +1148,15 @@ class MatchScreen(Screen):
                     if position not in same_batch
                 ]
 
-                self.queue_rule_resolution(
-                    "plus",
-                    remaining_plus_positions,
-                    placed_owner
-                )
+                # mostro Plus soltanto se cattura almeno una carta
+                # che non è già stata catturata tramite Same
+                if remaining_plus_positions:
+                    self.queue_rule_resolution(
+                        "plus",
+                        remaining_plus_positions,
+                        placed_owner,
+                        remaining_plus_positions
+                    )
 
         # se Same non è attiva, Plus diventa
         # la prima regola della sequenza
@@ -1168,7 +1177,8 @@ class MatchScreen(Screen):
             self.queue_rule_resolution(
                 "plus",
                 plus_batch,
-                placed_owner
+                placed_owner,
+                plus_capture_positions
             )
 
         # senza regole speciali eseguo
@@ -1195,22 +1205,137 @@ class MatchScreen(Screen):
 
         return True
 
+    # calcola una singola ondata di Combo partendo
+    # dalle carte catturate nell'ondata precedente
+    def get_combo_capture_positions(
+        self,
+        source_positions,
+        new_owner
+    ):
+
+        # Combo deve essere attiva nelle regole Extra
+        if not self.match_rules["extra"]["Combo"]:
+            return []
+
+        # conterrà le nuove carte catturate
+        # durante questa singola ondata
+        combo_capture_positions = []
+
+        # per ogni direzione salvo:
+        # spostamento, lato della carta sorgente
+        # e lato opposto della carta adiacente
+        directions = [
+            (-1, 0, "top", "bottom"),
+            (0, 1, "right", "left"),
+            (1, 0, "bottom", "top"),
+            (0, -1, "left", "right")
+        ]
+
+        # ogni carta catturata nell'ondata precedente
+        # si comporta come se fosse stata appena posizionata
+        for source_row, source_column in source_positions:
+
+            source_cell = self.board.get_cell(
+                source_row,
+                source_column
+            )
+
+            # ignoro eventuali posizioni non valide
+            if source_cell is None:
+                continue
+
+            source_card = source_cell["card"]
+
+            # confronto la carta sorgente
+            # con tutte le carte adiacenti
+            for (
+                row_offset,
+                column_offset,
+                source_side,
+                neighbour_side
+            ) in directions:
+
+                neighbour_row = (
+                    source_row + row_offset
+                )
+
+                neighbour_column = (
+                    source_column + column_offset
+                )
+
+                neighbour_cell = self.board.get_cell(
+                    neighbour_row,
+                    neighbour_column
+                )
+
+                # ignoro bordi, caselle vuote
+                # e carte già appartenenti al nuovo proprietario
+                if (
+                    neighbour_cell is None
+                    or neighbour_cell["owner"] == new_owner
+                ):
+                    continue
+
+                neighbour_card = neighbour_cell["card"]
+
+                source_value = getattr(
+                    source_card,
+                    source_side
+                )
+
+                neighbour_value = getattr(
+                    neighbour_card,
+                    neighbour_side
+                )
+
+                # durante Combo si applica soltanto
+                # il normale confronto valore maggiore
+                if source_value > neighbour_value:
+
+                    capture_position = (
+                        neighbour_row,
+                        neighbour_column
+                    )
+
+                    # una carta adiacente potrebbe essere raggiunta
+                    # da più sorgenti nella stessa ondata
+                    if (
+                        capture_position
+                        not in combo_capture_positions
+                    ):
+                        combo_capture_positions.append(
+                            capture_position
+                        )
+
+        return combo_capture_positions
+
     # aggiunge alla coda una regola attivata
     # insieme alle carte che dovrà catturare
     def queue_rule_resolution(
         self,
         rule_name,
         captured_positions,
-        new_owner
+        new_owner,
+        combo_source_positions
     ):
 
         self.rule_resolution_queue.append(
             {
                 "name": rule_name,
+
+                # tutte le carte che devono flippare
+                # durante la risoluzione della regola
                 "captured_positions": list(
                     captured_positions
                 ),
-                "new_owner": new_owner
+
+                "new_owner": new_owner,
+
+                # soltanto le carte catturate direttamente
+                # da Same o Plus possono avviare Combo
+                "combo_source_positions": list(
+                    combo_source_positions
+                )
             }
         )
 
@@ -1287,6 +1412,14 @@ class MatchScreen(Screen):
                 "captured_positions"
             ]
         )
+
+        # conservo separatamente soltanto le carte
+        # catturate direttamente da Same o Plus
+        self.pending_combo_source_positions = list(
+            completed_rule_effect[
+                "combo_source_positions"
+            ]
+        )        
 
         # se la regola possiede carte da catturare,
         # avvio il relativo flip simultaneo
@@ -1410,13 +1543,59 @@ class MatchScreen(Screen):
         # la propria larghezza completa
         elif self.flip_phase == "front_expanding":
 
+            # conservo il proprietario prima
+            # di pulire i dati del flip terminato
+            completed_flip_owner = (
+                self.flip_new_owner
+            )
+
+            # calcolo la nuova ondata di Combo usando
+            # soltanto le sorgenti di Same, Plus
+            # oppure della precedente ondata di Combo
+            combo_capture_positions = (
+                self.get_combo_capture_positions(
+                    self.pending_combo_source_positions,
+                    completed_flip_owner
+                )
+            )
+
+            # le sorgenti sono state elaborate;
+            # l'eventuale nuova ondata diventerà
+            # la sorgente della Combo successiva
+            self.pending_combo_source_positions = []
+
             # termino e pulisco l'animazione
             self.flip_phase = None
             self.flipping_card_positions = []
             self.flip_new_owner = None
 
-            # se esiste un'altra regola in coda,
-            # mostro il suo PNG prima di continuare
+            # ogni ondata di Combo ha la precedenza
+            # sulle altre regole ancora presenti in coda
+            if combo_capture_positions:
+
+                self.rule_resolution_queue.insert(
+                    0,
+                    {
+                        "name": "combo",
+
+                        # carte che flipperanno
+                        # contemporaneamente in questa ondata
+                        "captured_positions": list(
+                            combo_capture_positions
+                        ),
+
+                        "new_owner": completed_flip_owner,
+
+                        # queste carte potranno generare
+                        # la successiva ondata di Combo
+                        "combo_source_positions": list(
+                            combo_capture_positions
+                        )
+                    }
+                )
+
+            # mostro il PNG della Combo oppure
+            # quello della prossima regola in attesa
             if self.start_next_rule_effect():
                 return
 

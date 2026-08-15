@@ -1393,7 +1393,7 @@
     },
     {
         "card_id": "sm64_sign",
-        "name": "Gesper",
+        "name": "Sign",
         "image_path": "assets/images/cards/sm64/sm64_sign.png",
         "top": 1,
         "right": 5,
