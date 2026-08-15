@@ -15,6 +15,7 @@ from renderers.card_renderer import render_card
 from ui.animated_hand_cursor import AnimatedHandCursor
 from game.card_loader import load_cards
 from panels.play_again_panel import PlayAgainPanel
+from panels.leave_match_confirmation_panel import LeaveMatchConfirmationPanel
 
 # schermata che gestisce una partita di Triple Triad
 class MatchScreen(Screen):
@@ -803,8 +804,19 @@ class MatchScreen(Screen):
             # nella modalità hand scelgo una carta
             elif self.input_mode == "hand":
 
+                # ESC chiede conferma prima
+                # di abbandonare la partita
+                if event.key == pygame.K_ESCAPE:
+                    self.state.open_panel(
+                        LeaveMatchConfirmationPanel(
+                            self.width,
+                            self.height,
+                            self.state
+                        )
+                    )
+
                 # seleziono la carta precedente
-                if (
+                elif (
                     event.key == pygame.K_UP
                     and self.player_cards
                 ):
@@ -980,6 +992,21 @@ class MatchScreen(Screen):
                 and self.input_mode == "board"
             ):
                 self.input_mode = "hand"
+
+            # se la manina si trova sulla mano,
+            # il click destro chiede conferma
+            # prima di abbandonare la partita
+            elif (
+                event.button == 3
+                and self.input_mode == "hand"
+            ):
+                self.state.open_panel(
+                    LeaveMatchConfirmationPanel(
+                        self.width,
+                        self.height,
+                        self.state
+                    )
+                )
 
     # aggiorna la logica della partita
     def update(self):
