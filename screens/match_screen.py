@@ -10,12 +10,14 @@ from config import (
     CARD_BACK_PATH,
     DEBUG_DRAW_MATCH_GRID
 )
-
+from panels.play_again_panel import PlayAgainPanel
 # funzione che costruisce graficamente le carte
 from renderers.card_renderer import render_card
 from ui.animated_hand_cursor import AnimatedHandCursor
 from game.card_loader import load_cards
-from panels.play_again_panel import PlayAgainPanel
+# schermata mostrata dopo il risultato
+# per applicare la Trade Rule
+from screens.trade_screen import TradeScreen
 from panels.leave_match_confirmation_panel import LeaveMatchConfirmationPanel
 
 # schermata che gestisce una partita di Triple Triad
@@ -507,6 +509,62 @@ class MatchScreen(Screen):
         # l'animazione completa durerà circa 480 millisecondi
         self.flip_phase_duration = 120
 
+        # indica se il PNG della regola Same
+        # deve essere mostrato sullo schermo
+        self.same_rule_effect_active = False
+
+        # momento nel quale è apparso il PNG
+        self.same_rule_effect_start_time = 0
+
+        # Same rimane visibile per 1 secondo
+        self.same_rule_effect_duration = 1000
+
+        # carte che dovranno flippare
+        # dopo la scomparsa del PNG
+        self.pending_same_capture_positions = []
+
+        # proprietario che riceverà le carte
+        # dopo il feedback visivo
+        self.pending_same_new_owner = None
+
+        # carico i PNG mostrati quando
+        # si attivano le regole speciali
+        self.rule_effect_surfaces = {
+            "same": pygame.image.load(
+                "assets/images/cards/rules/same.png"
+            ).convert_alpha(),
+
+            "plus": pygame.image.load(
+                "assets/images/cards/rules/plus.png"
+            ).convert_alpha(),
+
+            "combo": pygame.image.load(
+                "assets/images/cards/rules/combo.png"
+            ).convert_alpha()
+        }
+
+        # mantengo temporaneamente questo riferimento
+        # perché il feedback attuale di Same lo utilizza ancora;
+        # verrà rimosso quando completeremo la coda generica
+        self.same_rule_surface = (
+            self.rule_effect_surfaces["same"]
+        )
+
+        # coda delle regole che devono ancora essere risolte;
+        # ogni elemento conterrà nome, catture e proprietario
+        self.rule_resolution_queue = []
+
+        # regola il cui PNG è attualmente visibile;
+        # None significa che non è mostrato alcun feedback
+        self.active_rule_effect = None
+
+        # momento nel quale è apparso
+        # il PNG della regola attiva
+        self.active_rule_effect_start_time = 0
+
+        # ogni PNG rimane visibile per un secondo
+        self.rule_effect_duration = 1000
+
         # carico il retro della carta usato
         # durante il centro dell'animazione
         self.board_card_back_surface = pygame.image.load(
@@ -714,6 +772,132 @@ class MatchScreen(Screen):
         )
 
         return colored_surface
+
+    # restituisce le posizioni catturate
+    # dall'eventuale attivazione della regola Plus
+    def get_plus_capture_positions(
+        self,
+        row,
+        column
+    ):
+
+        # Plus deve essere attiva nelle regole Extra
+        if not self.match_rules["extra"]["Plus"]:
+            return []
+
+        # recupero la carta appena posizionata
+        placed_cell = self.board.get_cell(
+            row,
+            column
+        )
+
+        if placed_cell is None:
+            return []
+
+        placed_card = placed_cell["card"]
+        placed_owner = placed_cell["owner"]
+
+        # per ogni possibile somma conserverò
+        # le carte adiacenti che la producono
+        sum_groups = {}
+
+        # per ogni direzione salvo:
+        # spostamento, lato della carta posizionata
+        # e lato opposto della carta adiacente
+        directions = [
+            (-1, 0, "top", "bottom"),
+            (0, 1, "right", "left"),
+            (1, 0, "bottom", "top"),
+            (0, -1, "left", "right")
+        ]
+
+        # calcolo la somma prodotta
+        # da ogni coppia di lati adiacenti
+        for (
+            row_offset,
+            column_offset,
+            placed_side,
+            neighbour_side
+        ) in directions:
+
+            neighbour_row = row + row_offset
+            neighbour_column = column + column_offset
+
+            neighbour_cell = self.board.get_cell(
+                neighbour_row,
+                neighbour_column
+            )
+
+            # ignoro i bordi e le caselle vuote
+            if neighbour_cell is None:
+                continue
+
+            neighbour_card = neighbour_cell["card"]
+
+            placed_value = getattr(
+                placed_card,
+                placed_side
+            )
+
+            neighbour_value = getattr(
+                neighbour_card,
+                neighbour_side
+            )
+
+            side_sum = (
+                placed_value + neighbour_value
+            )
+
+            # creo il gruppo della somma
+            # se non era ancora presente
+            if side_sum not in sum_groups:
+                sum_groups[side_sum] = []
+
+            sum_groups[side_sum].append(
+                (
+                    neighbour_row,
+                    neighbour_column,
+                    neighbour_cell["owner"]
+                )
+            )
+
+        # conterrà le carte avversarie coinvolte
+        # in gruppi con almeno due somme uguali
+        plus_capture_positions = []
+
+        for matching_neighbours in sum_groups.values():
+
+            # una singola somma non attiva Plus
+            if len(matching_neighbours) < 2:
+                continue
+
+            # le carte alleate contribuiscono alla regola,
+            # ma soltanto quelle avversarie vengono catturate
+            for (
+                neighbour_row,
+                neighbour_column,
+                neighbour_owner
+            ) in matching_neighbours:
+
+                if neighbour_owner == placed_owner:
+                    continue
+
+                capture_position = (
+                    neighbour_row,
+                    neighbour_column
+                )
+
+                # evito eventuali posizioni duplicate
+                if (
+                    capture_position
+                    not in plus_capture_positions
+                ):
+                    plus_capture_positions.append(
+                        capture_position
+                    )
+
+        return plus_capture_positions
+
     # restituisce le posizioni catturate
     # dall'eventuale attivazione della regola Same
     def get_same_capture_positions(
@@ -826,15 +1010,14 @@ class MatchScreen(Screen):
             if neighbour_owner != placed_owner
         ]
     
-    # individua le catture base dopo il piazzamento
-    # e avvia un unico ciclo di flip simultaneo
+    # individua le catture normali, Same e Plus
+    # e prepara la loro risoluzione nell'ordine corretto
     def resolve_basic_captures(
         self,
         row,
         column
     ):
 
-        # recupero la carta appena piazzata
         placed_cell = self.board.get_cell(
             row,
             column
@@ -846,13 +1029,26 @@ class MatchScreen(Screen):
         placed_card = placed_cell["card"]
         placed_owner = placed_cell["owner"]
 
-        # conterrà tutte le carte catturate
-        # durante questo singolo controllo
-        captured_positions = []
+        # controllo le due regole speciali;
+        # l'ordine di risoluzione sarà Same e poi Plus
+        same_capture_positions = (
+            self.get_same_capture_positions(
+                row,
+                column
+            )
+        )
 
-        # per ogni direzione salvo:
-        # spostamento, valore della carta piazzata
-        # e valore opposto della carta vicina
+        plus_capture_positions = (
+            self.get_plus_capture_positions(
+                row,
+                column
+            )
+        )
+
+        # conterrà separatamente le catture
+        # prodotte dal normale valore maggiore
+        basic_capture_positions = []
+
         directions = [
             (-1, 0, "top", "bottom"),
             (0, 1, "right", "left"),
@@ -860,7 +1056,6 @@ class MatchScreen(Screen):
             (0, -1, "left", "right")
         ]
 
-        # controllo le quattro caselle adiacenti
         for (
             row_offset,
             column_offset,
@@ -876,12 +1071,12 @@ class MatchScreen(Screen):
                 neighbour_column
             )
 
-            # ignoro bordi e caselle vuote
-            if neighbour_cell is None:
-                continue
-
-            # ignoro le carte già alleate
-            if neighbour_cell["owner"] == placed_owner:
+            # ignoro bordi, caselle vuote
+            # e carte già appartenenti allo stesso giocatore
+            if (
+                neighbour_cell is None
+                or neighbour_cell["owner"] == placed_owner
+            ):
                 continue
 
             neighbour_card = neighbour_cell["card"]
@@ -896,36 +1091,267 @@ class MatchScreen(Screen):
                 neighbour_side
             )
 
-            # salvo la posizione se la carta viene catturata
             if placed_value > neighbour_value:
-                captured_positions.append(
-                    (
-                        neighbour_row,
-                        neighbour_column
-                    )
+
+                capture_position = (
+                    neighbour_row,
+                    neighbour_column
                 )
 
-        # se non è stata catturata nessuna carta,
-        # non devo avviare alcuna animazione
-        if not captured_positions:
+                if (
+                    capture_position
+                    not in basic_capture_positions
+                ):
+                    basic_capture_positions.append(
+                        capture_position
+                    )
+
+        # pulisco la coda di un'eventuale
+        # risoluzione precedente
+        self.rule_resolution_queue = []
+
+        # Same ha sempre la precedenza su Plus
+        if same_capture_positions:
+
+            same_batch = list(
+                same_capture_positions
+            )
+
+            # le catture normali della stessa mossa
+            # flippano insieme alle catture di Same
+            for position in basic_capture_positions:
+                if position not in same_batch:
+                    same_batch.append(
+                        position
+                    )
+
+            self.queue_rule_resolution(
+                "same",
+                same_batch,
+                placed_owner
+            )
+
+            # se si è attivata anche Plus,
+            # verrà mostrata e risolta dopo Same
+            if plus_capture_positions:
+
+                # non devo flippare nuovamente carte
+                # già catturate dal primo gruppo
+                remaining_plus_positions = [
+                    position
+                    for position in plus_capture_positions
+                    if position not in same_batch
+                ]
+
+                self.queue_rule_resolution(
+                    "plus",
+                    remaining_plus_positions,
+                    placed_owner
+                )
+
+        # se Same non è attiva, Plus diventa
+        # la prima regola della sequenza
+        elif plus_capture_positions:
+
+            plus_batch = list(
+                plus_capture_positions
+            )
+
+            # le normali catture della carta posizionata
+            # avvengono insieme alle catture di Plus
+            for position in basic_capture_positions:
+                if position not in plus_batch:
+                    plus_batch.append(
+                        position
+                    )
+
+            self.queue_rule_resolution(
+                "plus",
+                plus_batch,
+                placed_owner
+            )
+
+        # senza regole speciali eseguo
+        # immediatamente le catture normali
+        else:
+
+            if not basic_capture_positions:
+                return False
+
+            self.flipping_card_positions = list(
+                basic_capture_positions
+            )
+
+            self.flip_new_owner = placed_owner
+            self.flip_phase = "front_shrinking"
+            self.flip_phase_start_time = (
+                pygame.time.get_ticks()
+            )
+
+            return True
+
+        # mostro il PNG della prima regola in coda
+        self.start_next_rule_effect()
+
+        return True
+
+    # aggiunge alla coda una regola attivata
+    # insieme alle carte che dovrà catturare
+    def queue_rule_resolution(
+        self,
+        rule_name,
+        captured_positions,
+        new_owner
+    ):
+
+        self.rule_resolution_queue.append(
+            {
+                "name": rule_name,
+                "captured_positions": list(
+                    captured_positions
+                ),
+                "new_owner": new_owner
+            }
+        )
+
+    # mostra il PNG della prossima regola
+    # presente nella coda di risoluzione
+    def start_next_rule_effect(self):
+
+        # non esistono altre regole da mostrare
+        if not self.rule_resolution_queue:
             return False
 
-        # tutte le carte raccolte flipperanno insieme
-        self.flipping_card_positions = captured_positions
+        # estraggo la prima regola della coda
+        self.active_rule_effect = (
+            self.rule_resolution_queue.pop(0)
+        )
 
-        # salvo il proprietario che riceverà le carte
-        # quando il flip raggiungerà il proprio centro
-        self.flip_new_owner = placed_owner
+        # salvo il momento di comparsa del PNG
+        self.active_rule_effect_start_time = (
+            pygame.time.get_ticks()
+        )
 
-        # inizio restringendo orizzontalmente
-        # il vecchio fronte delle carte catturate
-        self.flip_phase = "front_shrinking"
-
-        # salvo il momento di inizio dell'animazione
-        self.flip_phase_start_time = pygame.time.get_ticks()
-
-        # segnalo che è iniziata un'animazione di cattura
         return True
+
+
+    # conclude l'intera sequenza di catture
+    # e permette al turno di proseguire
+    def finish_capture_resolution(self):
+
+        # se questa era l'ultima mossa,
+        # ora posso determinare il risultato
+        if self.input_mode == "match_over":
+            self.determine_match_result()
+            return
+
+        # dopo tutte le catture avvio
+        # il trasferimento del turno già preparato
+        if (
+            self.input_mode
+            == "waiting_for_turn_transition"
+            and self.pending_turn_owner is not None
+        ):
+            self.start_turn_indicator_transition(
+                self.pending_turn_owner
+            )
+
+
+    # aggiorna il PNG della regola attualmente visibile
+    # e avvia il relativo gruppo di flip
+    def update_active_rule_effect(self):
+
+        if self.active_rule_effect is None:
+            return
+
+        current_time = pygame.time.get_ticks()
+
+        elapsed_time = (
+            current_time
+            - self.active_rule_effect_start_time
+        )
+
+        # mantengo il PNG visibile per un secondo
+        if elapsed_time < self.rule_effect_duration:
+            return
+
+        # conservo la regola prima di nasconderne il PNG
+        completed_rule_effect = (
+            self.active_rule_effect
+        )
+
+        self.active_rule_effect = None
+
+        captured_positions = (
+            completed_rule_effect[
+                "captured_positions"
+            ]
+        )
+
+        # se la regola possiede carte da catturare,
+        # avvio il relativo flip simultaneo
+        if captured_positions:
+
+            self.flipping_card_positions = list(
+                captured_positions
+            )
+
+            self.flip_new_owner = (
+                completed_rule_effect[
+                    "new_owner"
+                ]
+            )
+
+            self.flip_phase = "front_shrinking"
+            self.flip_phase_start_time = current_time
+            return
+
+        # una regola può essere stata attivata anche se
+        # le sue carte sono già state catturate da una
+        # regola precedente; in quel caso passo oltre
+        if not self.start_next_rule_effect():
+            self.finish_capture_resolution()
+        
+    # aggiorna il feedback visivo della regola Same
+    # e avvia il flip dopo mezzo secondo
+    def update_same_rule_effect(self):
+
+        # interrompo se Same non è visualizzata
+        if not self.same_rule_effect_active:
+            return
+
+        current_time = pygame.time.get_ticks()
+
+        elapsed_time = (
+            current_time
+            - self.same_rule_effect_start_time
+        )
+
+        # mantengo il PNG visibile per 500 ms
+        if elapsed_time < self.same_rule_effect_duration:
+            return
+
+        # nascondo il PNG della regola
+        self.same_rule_effect_active = False
+
+        # recupero le carte che erano rimaste
+        # in attesa durante il feedback
+        self.flipping_card_positions = list(
+            self.pending_same_capture_positions
+        )
+
+        self.flip_new_owner = (
+            self.pending_same_new_owner
+        )
+
+        # pulisco i dati temporanei di Same
+        self.pending_same_capture_positions = []
+        self.pending_same_new_owner = None
+
+        # dopo la scomparsa del PNG
+        # avvio il normale flip delle carte
+        self.flip_phase = "front_shrinking"
+        self.flip_phase_start_time = current_time
 
     # aggiorna le quattro fasi del flip
     # delle carte catturate
@@ -989,21 +1415,14 @@ class MatchScreen(Screen):
             self.flipping_card_positions = []
             self.flip_new_owner = None
 
-            # se il tabellone era già stato completato,
-            # ora il punteggio include anche l'ultima cattura
-            if self.input_mode == "match_over":
-                self.determine_match_result()
+            # se esiste un'altra regola in coda,
+            # mostro il suo PNG prima di continuare
+            if self.start_next_rule_effect():
+                return
 
-            # dopo il flip avvio il trasferimento
-            # che era rimasto in attesa
-            if (
-                self.input_mode
-                == "waiting_for_turn_transition"
-                and self.pending_turn_owner is not None
-            ):
-                self.start_turn_indicator_transition(
-                    self.pending_turn_owner
-                )
+            # non esistono altri gruppi di catture;
+            # posso terminare la risoluzione della mossa
+            self.finish_capture_resolution()
 
             return
 
@@ -1038,9 +1457,13 @@ class MatchScreen(Screen):
         # blocco i controlli e i turni normali
         self.input_mode = "match_over"
 
-        # se non è in corso un ultimo flip,
-        # posso calcolare immediatamente il risultato
-        if self.flip_phase is None:
+        # attendo anche l'eventuale feedback di Same
+        # prima di calcolare il risultato definitivo
+        if (
+            self.flip_phase is None
+            and self.active_rule_effect is None
+            and not self.rule_resolution_queue
+        ):
             self.determine_match_result()
 
         # interrompo l'eventuale turno dell'avversario
@@ -1319,9 +1742,12 @@ class MatchScreen(Screen):
     # gestisce gli eventi della partita
     def handle_events(self, event):
 
-        # durante una cattura attendo che tutte
-        # le carte abbiano completato il flip
-        if self.flip_phase is not None:
+        # durante il feedback di Same oppure una cattura
+        # blocco temporaneamente tutti gli input
+        if (
+            self.active_rule_effect is not None
+            or self.flip_phase is not None
+        ):
             return
 
         # quando la partita è terminata,
@@ -1356,15 +1782,44 @@ class MatchScreen(Screen):
                 result_fade_finished
                 and result_confirmed
             ):
-                self.state.open_panel(
-                    PlayAgainPanel(
+
+                # con un pareggio non avviene alcuno scambio;
+                # apro direttamente il pannello Play Again
+                if self.match_result == "draw":
+
+                    self.state.open_panel(
+                        PlayAgainPanel(
+                            self.width,
+                            self.height,
+                            self.state,
+                            self.player_cards,
+                            self.match_rules
+                        )
+                    )
+
+                # con vittoria o sconfitta passo
+                # invece alla schermata dello scambio
+                else:
+
+                    trade_screen = TradeScreen(
                         self.width,
                         self.height,
                         self.state,
                         self.player_cards,
-                        self.match_rules
+                        self.opponent_cards,
+                        self.match_rules,
+                        self.match_result,
+                        self.player_score,
+                        self.opponent_score
                     )
-                )
+
+                    self.state.change_screen(
+                        trade_screen
+                    )
+
+                    # assicuro che non rimangano
+                    # pannelli aperti sulla nuova schermata
+                    self.state.close_panel()
 
             # durante il risultato blocco
             # tutti gli altri controlli della partita
@@ -1597,6 +2052,12 @@ class MatchScreen(Screen):
         # aggiorno soltanto la freccia 50:50
         if self.input_mode == "starting_turn_animation":
             self.update_starting_turn_animation()
+            return
+
+        # il PNG della regola deve terminare
+        # prima di avviare il relativo flip
+        if self.active_rule_effect is not None:
+            self.update_active_rule_effect()
             return
         
         # l'animazione di cattura ha la precedenza
@@ -2306,6 +2767,32 @@ class MatchScreen(Screen):
                 result_rect
             )
 
+        # mostro il PNG della regola
+        # attualmente in fase di risoluzione
+        if self.active_rule_effect is not None:
+
+            active_rule_name = (
+                self.active_rule_effect["name"]
+            )
+
+            active_rule_surface = (
+                self.rule_effect_surfaces[
+                    active_rule_name
+                ]
+            )
+
+            active_rule_rect = active_rule_surface.get_rect(
+                center=(
+                    self.width // 2,
+                    self.height // 2
+                )
+            )
+
+            screen.blit(
+                active_rule_surface,
+                active_rule_rect
+            )
+            
         # durante la selezione del primo turno,
         # disegno la freccia al centro dello schermo
         if (

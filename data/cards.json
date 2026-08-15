@@ -1452,13 +1452,25 @@
         "card_sets": ["sm64"]
     },
     {
+        "card_id": "sm64_patobrine",
+        "name": "PatoBrine",
+        "image_path": "assets/images/cards/sm64/sm64_patobrine.png",
+        "top": 6,
+        "right": 10,
+        "bottom": 10,
+        "left": 2,
+        "rarity": 10,
+        "element": null,
+        "card_sets": ["sm64"]
+    },
+    {
         "card_id": "sm64_conichan",
         "name": "Conichan",
         "image_path": "assets/images/cards/sm64/sm64_conichan.png",
-        "top": 1,
-        "right": 1,
+        "top": 10,
+        "right": 7,
         "bottom": 1,
-        "left": 1,
+        "left": 10,
         "rarity": 10,
         "element": null,
         "card_sets": ["sm64"]
@@ -1468,9 +1480,9 @@
         "name": "Amsixx",
         "image_path": "assets/images/cards/sm64/sm64_amsixx.png",
         "top": 10,
-        "right": 10,
-        "bottom": 10,
-        "left": 10,
+        "right": 9,
+        "bottom": 9,
+        "left": 1,
         "rarity": 10,
         "element": null,
         "card_sets": ["sm64"]
