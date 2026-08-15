@@ -60,6 +60,22 @@ class DeckPanel(Panel):
         # indice dello slot attualmente selezionato
         self.selected_card = 0
 
+        # direzione verticale tenuta premuta:
+        # -1 verso l'alto, 1 verso il basso, 0 nessuna
+        self.held_vertical_direction = 0
+
+        # momento della pressione iniziale del tasto
+        self.held_vertical_start_time = 0
+
+        # momento dell'ultimo movimento automatico
+        self.last_vertical_repeat_time = 0
+
+        # attesa prima di iniziare lo scorrimento continuo
+        self.vertical_repeat_delay = 500
+
+        # intervallo tra i movimenti automatici successivi
+        self.vertical_repeat_interval = 90
+
         # dato che ci sono piu pagine di carte
         self.current_page = 0
 
@@ -92,6 +108,10 @@ class DeckPanel(Panel):
             ACTIVE_CARD_SETS
         )
 
+        # indice della prima carta visibile
+        # nella lista della rarità corrente
+        self.first_visible_card = 0
+
         # superficie che conterrà l'anteprima della carta selezionata
         self.card_preview = None
 
@@ -101,24 +121,42 @@ class DeckPanel(Panel):
         # lista che contiene i rettangoli degli slot delle carte
         self.slot_rects = []
 
+    # restituisce soltanto le carte appartenenti
+    # alla rarità attualmente mostrata
+    def get_current_rarity_cards(self):
 
+        # current_page parte da 0,
+        # mentre le rarità vanno da 1 a 10
+        current_rarity = self.current_page + 1
+
+        return [
+            card
+            for card in self.cards
+            if card.rarity == current_rarity
+        ]
+    
     # aggiorna l'anteprima quando cambia la carta selezionata
     def update_card_preview(self):
 
-        # calcolo l'indice della carta nell'intero catalogo
-        card_index = (
-            self.current_page * self.cards_per_page
-            + self.selected_card
-        )
+        # recupero tutte le carte
+        # appartenenti alla rarità corrente
+        rarity_cards = self.get_current_rarity_cards()
 
-        # se lo slot selezionato è vuoto, rimuovo l'anteprima
-        if card_index >= len(self.cards):
+        # se la rarità è vuota oppure la selezione
+        # non corrisponde a una carta, rimuovo l'anteprima
+        if (
+            not rarity_cards
+            or self.selected_card >= len(rarity_cards)
+        ):
             self.card_preview = None
             self.previewed_card_key = None
             return
 
         # recupero la carta selezionata
-        selected_card = self.cards[card_index]
+        # all'interno della rarità corrente
+        selected_card = rarity_cards[
+            self.selected_card
+        ]
 
         # durante lo sviluppo posso mostrare tutte le anteprime
         is_discovered = (
@@ -144,7 +182,7 @@ class DeckPanel(Panel):
 
         # creo una chiave composta da carta selezionata e stato grafico
         preview_key = (
-            card_index,
+            selected_card.card_id,
             preview_state
         )
 
@@ -189,10 +227,18 @@ class DeckPanel(Panel):
         if self.total_pages <= 1:
             return
 
-        # calcolo la pagina che dovrà entrare
-        self.target_page = (
+        # calcolo la rarità richiesta
+        requested_page = (
             self.current_page + direction
-        ) % self.total_pages
+        )
+
+        # impedisco di andare prima della rarità 1
+        # oppure oltre la rarità 10
+        if not 0 <= requested_page < self.total_pages:
+            return
+
+        # salvo la nuova pagina valida
+        self.target_page = requested_page
 
         # salvo la direzione richiesta
         self.page_animation_direction = direction
@@ -230,6 +276,10 @@ class DeckPanel(Panel):
             # seleziono la prima carta della nuova pagina
             self.selected_card = 0
 
+            # mostro la lista della nuova rarità
+            # partendo dalla sua prima carta
+            self.first_visible_card = 0
+
             # faccio partire la nuova pagina dal lato opposto
             self.page_animation_offset = (
                 self.page_animation_direction
@@ -258,16 +308,90 @@ class DeckPanel(Panel):
                 self.page_animation_phase = None
                 self.page_animation_direction = 0
 
+    # sposta la selezione nella rarità corrente
+    # e scorre automaticamente le righe visibili
+    def move_card_selection(self, direction):
+
+        # recupero le carte della rarità corrente
+        rarity_cards = self.get_current_rarity_cards()
+
+        # non posso muovere la selezione
+        # se questa rarità non contiene carte
+        if not rarity_cards:
+            return
+
+        # calcolo la nuova posizione impedendo
+        # alla selezione di superare gli estremi
+        self.selected_card = max(
+            0,
+            min(
+                len(rarity_cards) - 1,
+                self.selected_card + direction
+            )
+        )
+
+        # se la carta selezionata si trova sopra
+        # la prima riga visibile, scorro verso l'alto
+        if self.selected_card < self.first_visible_card:
+            self.first_visible_card = self.selected_card
+
+        # se la carta selezionata si trova sotto
+        # l'ultima riga visibile, scorro verso il basso
+        elif (
+            self.selected_card
+            >= self.first_visible_card + self.cards_per_page
+        ):
+            self.first_visible_card = (
+                self.selected_card
+                - self.cards_per_page
+                + 1
+            )
+
+    # aggiorna lo scorrimento verticale
+    # quando Su oppure Giù rimangono premuti
+    def update_held_vertical_navigation(self):
+
+        # nessun tasto verticale è tenuto premuto
+        if self.held_vertical_direction == 0:
+            return
+
+        # non scorro durante il cambio rarità
+        if self.page_animating:
+            return
+
+        current_time = pygame.time.get_ticks()
+
+        # aspetto mezzo secondo dalla pressione iniziale
+        if (
+            current_time - self.held_vertical_start_time
+            < self.vertical_repeat_delay
+        ):
+            return
+
+        # dopo l'attesa, avanzo rispettando
+        # l'intervallo della ripetizione
+        if (
+            current_time - self.last_vertical_repeat_time
+            >= self.vertical_repeat_interval
+        ):
+            self.move_card_selection(
+                self.held_vertical_direction
+            )
+
+            self.last_vertical_repeat_time = current_time
+
     def handle_events(self, event):
 
-        # calcolo quante carte sono presenti nella pagina corrente
-        start_index = self.current_page * self.cards_per_page
+        # recupero le carte appartenenti
+        # alla rarità corrente
+        rarity_cards = self.get_current_rarity_cards()
 
+        # calcolo quante carte sono attualmente visibili
         cards_on_page = max(
             0,
             min(
                 self.cards_per_page,
-                len(self.cards) - start_index
+                len(rarity_cards) - self.first_visible_card
             )
         )
 
@@ -284,18 +408,30 @@ class DeckPanel(Panel):
                 and cards_on_page > 0
                 and not self.page_animating
             ):
-                self.selected_card = (
-                    self.selected_card - 1
-                ) % cards_on_page
+                # eseguo immediatamente il primo movimento
+                self.move_card_selection(-1)
+
+                # preparo la ripetizione se il tasto
+                # rimane premuto per almeno mezzo secondo
+                current_time = pygame.time.get_ticks()
+                self.held_vertical_direction = -1
+                self.held_vertical_start_time = current_time
+                self.last_vertical_repeat_time = current_time
 
             elif (
                 event.key == pygame.K_DOWN
                 and cards_on_page > 0
                 and not self.page_animating
             ):
-                self.selected_card = (
-                    self.selected_card + 1
-                ) % cards_on_page
+                # eseguo immediatamente il primo movimento
+                self.move_card_selection(1)
+
+                # preparo la ripetizione se il tasto
+                # rimane premuto per almeno mezzo secondo
+                current_time = pygame.time.get_ticks()
+                self.held_vertical_direction = 1
+                self.held_vertical_start_time = current_time
+                self.last_vertical_repeat_time = current_time
 
 
             # pagina precedente
@@ -306,16 +442,41 @@ class DeckPanel(Panel):
             elif event.key == pygame.K_RIGHT:
                 self.change_page(1)
 
-        # cambio pagina con la rotella del mouse
-        if event.type == pygame.MOUSEWHEEL:
+        # interrompo lo scorrimento continuo
+        # quando il tasto viene rilasciato
+        if event.type == pygame.KEYUP:
 
-            # rotella verso l'alto: pagina precedente
+            released_held_key = (
+                (
+                    event.key == pygame.K_UP
+                    and self.held_vertical_direction == -1
+                )
+                or
+                (
+                    event.key == pygame.K_DOWN
+                    and self.held_vertical_direction == 1
+                )
+            )
+
+            if released_held_key:
+                self.held_vertical_direction = 0
+
+        # la rotella scorre le carte
+        # della rarità corrente una riga alla volta
+        if (
+            event.type == pygame.MOUSEWHEEL
+            and not self.page_animating
+        ):
+
+            # rotella verso l'alto:
+            # seleziono la carta precedente
             if event.y > 0:
-                self.change_page(-1)
+                self.move_card_selection(-1)
 
-            # rotella verso il basso: pagina successiva
+            # rotella verso il basso:
+            # seleziono la carta successiva
             elif event.y < 0:
-                self.change_page(1)
+                self.move_card_selection(1)
 
         # ignoro l'hover mentre le righe stanno scorrendo
         if (
@@ -331,7 +492,11 @@ class DeckPanel(Panel):
                     i < cards_on_page
                     and slot_rect.collidepoint(event.pos)
                 ):
-                    self.selected_card = i
+                    # converto la riga visibile
+                    # nell'indice reale dentro la rarità
+                    self.selected_card = (
+                        self.first_visible_card + i
+                    )
 
         if event.type == pygame.MOUSEBUTTONDOWN:
 
@@ -344,6 +509,10 @@ class DeckPanel(Panel):
 
         # aggiorno l'animazione del cambio pagina
         self.update_page_animation()
+
+        # aggiorno l'eventuale scorrimento continuo
+        # causato da Su oppure Giù tenuti premuti
+        self.update_held_vertical_navigation()
 
         # aggiorno l'anteprima della carta selezionata
         self.update_card_preview()
@@ -393,12 +562,15 @@ class DeckPanel(Panel):
         # svuoto la lista prima di ricreare i rettangoli degli slot
         self.slot_rects = []
 
-        # calcolo l'indice della prima carta della pagina corrente
-        start_index = self.current_page * self.cards_per_page
+        # recupero tutte le carte
+        # appartenenti alla rarità corrente
+        rarity_cards = self.get_current_rarity_cards()
 
-        # estraggo solamente le carte appartenenti alla pagina corrente
-        page_cards = self.cards[
-            start_index:start_index + self.cards_per_page
+        # estraggo al massimo 11 carte partendo
+        # dalla prima posizione attualmente visibile
+        page_cards = rarity_cards[
+            self.first_visible_card:
+            self.first_visible_card + self.cards_per_page
         ]
 
         # converto l'offset dell'animazione in pixel interi
@@ -513,27 +685,122 @@ class DeckPanel(Panel):
         # ripristino l'area di disegno precedente
         screen.set_clip(previous_clip)
 
+        # controllo se esistono carte nascoste
+        # sopra l'intervallo attualmente visibile
+        can_scroll_up = (
+            self.first_visible_card > 0
+        )
+
+        # controllo se esistono carte nascoste
+        # sotto l'intervallo attualmente visibile
+        can_scroll_down = (
+            self.first_visible_card
+            + len(page_cards)
+            < len(rarity_cards)
+        )
+
+        # mostro una freccia sopra la lista
+        # quando è possibile scorrere verso l'alto
+        if can_scroll_up:
+
+            up_arrow_surface = self.info_font.render(
+                "▲",
+                True,
+                (255, 255, 255)
+            )
+
+            up_arrow_rect = up_arrow_surface.get_rect(
+                center=(
+                    list_rect.centerx,
+                    list_rect.top - 14
+                )
+            )
+
+            screen.blit(
+                up_arrow_surface,
+                up_arrow_rect
+            )
+
+        # mostro una freccia sotto la lista
+        # quando è possibile scorrere verso il basso
+        if can_scroll_down:
+
+            down_arrow_surface = self.info_font.render(
+                "▼",
+                True,
+                (255, 255, 255)
+            )
+
+            down_arrow_rect = down_arrow_surface.get_rect(
+                center=(
+                    list_rect.centerx,
+                    list_rect.bottom + 14
+                )
+            )
+
+            screen.blit(
+                down_arrow_surface,
+                down_arrow_rect
+            )
+
+        # converto l'indice reale della carta
+        # nella relativa riga visibile
+        selected_visible_row = (
+            self.selected_card
+            - self.first_visible_card
+        )
+
         # durante l'animazione la manina rimane nascosta
         if (
             not self.page_animating
-            and self.selected_card < len(self.slot_rects)
+            and 0 <= selected_visible_row < len(page_cards)
         ):
 
-            # recupero lo slot selezionato nella sua posizione fissa
+            # recupero lo slot corrispondente
+            # alla riga attualmente visibile
             selected_slot_rect = self.slot_rects[
-                self.selected_card
+                selected_visible_row
             ]
 
-            # disegno la manina animata accanto allo slot selezionato
+            # disegno la manina animata
+            # accanto alla carta selezionata
             self.hand_cursor.draw(
                 screen,
                 selected_slot_rect,
                 gap=5
             )
 
-        #preparo il testo con il numero della pagina corrente
+        # calcolo il numero totale di carte
+        # appartenenti alla rarità corrente
+        total_rarity_cards = len(rarity_cards)
+
+        # se la rarità non contiene carte,
+        # l'intervallo visibile è 0–0
+        if total_rarity_cards == 0:
+            first_visible_number = 0
+            last_visible_number = 0
+
+        else:
+            # gli indici interni partono da zero,
+            # mentre il contatore mostrato parte da uno
+            first_visible_number = (
+                self.first_visible_card + 1
+            )
+
+            last_visible_number = (
+                self.first_visible_card
+                + len(page_cards)
+            )
+
+        # preparo rarità, intervallo visibile
+        # e numero totale di carte
         page_text = self.info_font.render(
-            f"Page {self.current_page + 1} / {self.total_pages}",
+            (
+                f"Rarity {self.current_page + 1}   "
+                f"Cards {first_visible_number}–"
+                f"{last_visible_number} / "
+                f"{total_rarity_cards}"
+            ),
             True,
             (255, 255, 255)
         )
@@ -543,8 +810,73 @@ class DeckPanel(Panel):
             center=(x + 665, y + 30)
         )
 
-        #disegno il numero sulla pagina
-        screen.blit(page_text,page_text_rect)
+        # disegno le informazioni della rarità corrente
+        screen.blit(
+            page_text,
+            page_text_rect
+        )
+
+        # mostro una freccia triangolare a sinistra
+        # soltanto se esiste una rarità precedente
+        if self.current_page > 0:
+
+            left_arrow_center_x = (
+                page_text_rect.left - 18
+            )
+
+            left_arrow_center_y = (
+                page_text_rect.centery
+            )
+
+            pygame.draw.polygon(
+                screen,
+                (255, 255, 255),
+                [
+                    (
+                        left_arrow_center_x + 7,
+                        left_arrow_center_y - 9
+                    ),
+                    (
+                        left_arrow_center_x - 7,
+                        left_arrow_center_y
+                    ),
+                    (
+                        left_arrow_center_x + 7,
+                        left_arrow_center_y + 9
+                    )
+                ]
+            )
+
+        # mostro una freccia triangolare a destra
+        # soltanto se esiste una rarità successiva
+        if self.current_page < self.total_pages - 1:
+
+            right_arrow_center_x = (
+                page_text_rect.right + 18
+            )
+
+            right_arrow_center_y = (
+                page_text_rect.centery
+            )
+
+            pygame.draw.polygon(
+                screen,
+                (255, 255, 255),
+                [
+                    (
+                        right_arrow_center_x - 7,
+                        right_arrow_center_y - 9
+                    ),
+                    (
+                        right_arrow_center_x + 7,
+                        right_arrow_center_y
+                    ),
+                    (
+                        right_arrow_center_x - 7,
+                        right_arrow_center_y + 9
+                    )
+                ]
+            )
 
         # disegno l'anteprima della carta nella parte destra del pannello
         if self.card_preview is not None:
@@ -560,10 +892,6 @@ class DeckPanel(Panel):
     @property
     def total_pages(self):
 
-        #calcolo il numero di pagine in base alle carte caricate
-        pages = (
-            len(self.cards) + self.cards_per_page - 1
-        ) // self.cards_per_page
-
-        # mostra comunque almeno una apgina anche se non ci sono carte
-        return max(1, pages)
+        # esistono sempre dieci pagine fisse:
+        # una per ogni livello di rarità
+        return 10
