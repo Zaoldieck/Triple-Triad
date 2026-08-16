@@ -215,6 +215,10 @@ class MatchScreen(Screen):
         # le cui carte sono già state giocate
         self.played_opponent_card_indices = set()
 
+        # associa ogni indice della mano avversaria
+        # alla posizione occupata sul tabellone
+        self.opponent_card_board_positions = {}
+
         # indice della carta scelta durante il turno avversario
         self.selected_opponent_card = None
 
@@ -243,6 +247,10 @@ class MatchScreen(Screen):
         # indici degli slot le cui carte
         # sono già state giocate sul tabellone
         self.played_player_card_indices = set()
+
+        # associa ogni indice della mano del giocatore
+        # alla posizione occupata sul tabellone
+        self.player_card_board_positions = {}
 
         # indice della carta attualmente indicata
         # nella mano del giocatore
@@ -1734,6 +1742,65 @@ class MatchScreen(Screen):
         # ogni nuova fase parte dal momento attuale
         self.flip_phase_start_time = current_time
 
+    # restituisce il proprietario finale di ogni carta
+    # mantenendo l'ordine delle due mani originali
+    def get_direct_final_owners(self):
+
+        # le carte non giocate mantengono
+        # automaticamente il proprietario originale
+        player_card_final_owners = [
+            "player"
+            for card in self.player_cards
+        ]
+
+        opponent_card_final_owners = [
+            "opponent"
+            for card in self.opponent_cards
+        ]
+
+        # recupero il colore finale delle carte
+        # originariamente appartenenti al giocatore
+        for (
+            card_index,
+            board_position
+        ) in self.player_card_board_positions.items():
+
+            row, column = board_position
+
+            board_cell = self.board.get_cell(
+                row,
+                column
+            )
+
+            if board_cell is not None:
+                player_card_final_owners[
+                    card_index
+                ] = board_cell["owner"]
+
+        # recupero il colore finale delle carte
+        # originariamente appartenenti all'avversario
+        for (
+            card_index,
+            board_position
+        ) in self.opponent_card_board_positions.items():
+
+            row, column = board_position
+
+            board_cell = self.board.get_cell(
+                row,
+                column
+            )
+
+            if board_cell is not None:
+                opponent_card_final_owners[
+                    card_index
+                ] = board_cell["owner"]
+
+        return (
+            player_card_final_owners,
+            opponent_card_final_owners
+        )
+    
     # ricostruisce le due mani per un nuovo round
     # di Sudden Death usando i proprietari finali
     def get_sudden_death_hands(self):
@@ -1969,6 +2036,15 @@ class MatchScreen(Screen):
         # una casella già occupata non può essere utilizzata
         if not card_placed:
             return
+
+        # conservo la posizione della carta
+        # insieme al suo indice nella mano originale
+        self.player_card_board_positions[
+            self.selected_player_card
+        ] = (
+            self.selected_board_row,
+            self.selected_board_column
+        )
 
         # applico l'eventuale modificatore della casella
         self.apply_element_modifier(
@@ -2286,6 +2362,11 @@ class MatchScreen(Screen):
                 # invece alla schermata dello scambio
                 else:
 
+                    (
+                        player_card_final_owners,
+                        opponent_card_final_owners
+                    ) = self.get_direct_final_owners()
+
                     trade_screen = TradeScreen(
                         self.width,
                         self.height,
@@ -2295,7 +2376,9 @@ class MatchScreen(Screen):
                         self.match_rules,
                         self.match_result,
                         self.player_score,
-                        self.opponent_score
+                        self.opponent_score,
+                        player_card_final_owners,
+                        opponent_card_final_owners
                     )
 
                     self.state.change_screen(
@@ -2654,6 +2737,15 @@ class MatchScreen(Screen):
 
             # continuo soltanto se il piazzamento è riuscito
             if card_placed:
+
+                # conservo la posizione della carta
+                # insieme al suo indice nella mano originale
+                self.opponent_card_board_positions[
+                    self.selected_opponent_card
+                ] = (
+                    self.opponent_target_row,
+                    self.opponent_target_column
+                )
 
                 # applico l'eventuale modificatore Elemental
                 # alla carta appena piazzata dall'avversario

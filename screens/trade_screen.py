@@ -24,7 +24,9 @@ class TradeScreen(Screen):
         match_rules,
         match_result,
         player_score,
-        opponent_score
+        opponent_score,
+        player_card_final_owners=None,
+        opponent_card_final_owners=None
     ):
 
         # dimensioni della finestra
@@ -41,6 +43,30 @@ class TradeScreen(Screen):
 
         self.opponent_cards = list(
             opponent_cards
+        )
+
+        # se i proprietari finali non sono stati forniti,
+        # mantengo i colori originali delle due mani
+        if player_card_final_owners is None:
+            player_card_final_owners = [
+                "player"
+                for card in self.player_cards
+            ]
+
+        if opponent_card_final_owners is None:
+            opponent_card_final_owners = [
+                "opponent"
+                for card in self.opponent_cards
+            ]
+
+        # conservo il proprietario finale
+        # di ogni carta delle due mani originali
+        self.player_card_final_owners = list(
+            player_card_final_owners
+        )
+
+        self.opponent_card_final_owners = list(
+            opponent_card_final_owners
         )
 
         # conservo regole, risultato e punteggi;
@@ -355,6 +381,82 @@ class TradeScreen(Screen):
         # slot che devono rimanere vuoti
         # dopo la perdita della carta
         self.removed_player_card_indices = set()
+
+        # carte originariamente avversarie
+        # diventate blu durante la partita
+        self.direct_gained_card_indices = [
+            card_index
+            for card_index, final_owner in enumerate(
+                self.opponent_card_final_owners
+            )
+            if final_owner == "player"
+        ]
+
+        # carte originariamente del giocatore
+        # diventate rosse durante la partita
+        self.direct_lost_card_indices = [
+            card_index
+            for card_index, final_owner in enumerate(
+                self.player_card_final_owners
+            )
+            if final_owner == "opponent"
+        ]
+
+        # indica se la sequenza di Direct
+        # è già stata avviata
+        self.direct_trade_started = False
+
+        # breve attesa prima del primo movimento
+        self.direct_trade_delay = 1000
+
+        self.direct_trade_start_time = (
+            pygame.time.get_ticks()
+        )
+
+    # avvia le animazioni della Trade Rule Direct
+    # senza eseguire nuovi flip
+    def start_direct_trade(self):
+
+        if self.direct_trade_started:
+            return
+
+        self.direct_trade_started = True
+
+        # mostro prima tutte le carte
+        # vinte dal giocatore
+        if self.direct_gained_card_indices:
+
+            self.chosen_trade_cards = list(
+                self.direct_gained_card_indices
+            )
+
+            self.acquisition_queue_position = 0
+            self.start_next_acquisition_card()
+            return
+
+        # se non sono state vinte carte,
+        # passo direttamente a quelle perse
+        if self.direct_lost_card_indices:
+
+            self.chosen_lost_cards = list(
+                self.direct_lost_card_indices
+            )
+
+            self.loss_queue_position = 0
+            self.start_next_loss_movement()
+            return
+
+        # se nessuna carta cambia proprietario,
+        # lo scambio è già concluso
+        self.state.open_panel(
+            PlayAgainPanel(
+                self.width,
+                self.height,
+                self.state,
+                self.player_cards,
+                self.match_rules
+            )
+        )
 
     # avvia il flip automatico della prossima
     # carta quando devono essere trasferite tutte
@@ -792,12 +894,27 @@ class TradeScreen(Screen):
                     self.start_next_acquisition_card()
                     return
 
-                # l'intera sequenza è terminata
+                # l'intera sequenza delle carte vinte
+                # è terminata
                 self.current_acquisition_card = None
                 self.chosen_trade_card = None
 
-                # soltanto dopo l'ultima carta
-                # mostro il pannello Play Again
+                # con Direct, dopo le carte vinte
+                # mostro tutte le eventuali carte perse
+                if (
+                    self.trade_rule == "Direct"
+                    and self.direct_lost_card_indices
+                ):
+                    self.chosen_lost_cards = list(
+                        self.direct_lost_card_indices
+                    )
+
+                    self.loss_queue_position = 0
+                    self.start_next_loss_movement()
+                    return
+
+                # se non esistono carte perse,
+                # lo scambio è concluso
                 self.state.open_panel(
                     PlayAgainPanel(
                         self.width,
@@ -1177,6 +1294,30 @@ class TradeScreen(Screen):
 
             return
 
+        # Direct non utilizza flip o selezioni;
+        # aggiorno direttamente le sue animazioni
+        if self.trade_rule == "Direct":
+
+            # se è in corso la presentazione
+            # di una carta persa, la aggiorno
+            if self.loss_movement_phase is not None:
+                self.update_loss_movement()
+                return
+
+            # prima dell'avvio rispetto
+            # la breve attesa iniziale
+            if not self.direct_trade_started:
+
+                elapsed_time = (
+                    pygame.time.get_ticks()
+                    - self.direct_trade_start_time
+                )
+
+                if elapsed_time >= self.direct_trade_delay:
+                    self.start_direct_trade()
+
+                return
+
         # quando il giocatore vince tutte le carte,
         # avvio automaticamente il primo flip
         if (
@@ -1483,6 +1624,17 @@ class TradeScreen(Screen):
             surface_to_draw = red_card_surface
             animated_width = self.trade_card_size[0]
 
+            # con Direct mostro immediatamente
+            # il colore ottenuto alla fine della partita
+            if (
+                self.trade_rule == "Direct"
+                and self.opponent_card_final_owners[i]
+                == "player"
+            ):
+                surface_to_draw = (
+                    self.selected_opponent_card_surfaces[i]
+                )
+
             # tutte le carte già selezionate
             # devono rimanere con il fronte blu
             if i in self.chosen_trade_cards:
@@ -1630,6 +1782,17 @@ class TradeScreen(Screen):
             # ancora al giocatore ed è blu
             surface_to_draw = blue_card_surface
             animated_width = self.trade_card_size[0]
+
+            # con Direct mostro immediatamente
+            # il colore ottenuto alla fine della partita
+            if (
+                self.trade_rule == "Direct"
+                and self.player_card_final_owners[i]
+                == "opponent"
+            ):
+                surface_to_draw = (
+                    self.lost_player_card_surfaces[i]
+                )
 
             # le carte che hanno completato il flip
             # devono rimanere permanentemente rosse
