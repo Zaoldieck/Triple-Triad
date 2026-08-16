@@ -1464,6 +1464,18 @@
         "card_sets": ["sm64"]
     },
     {
+        "card_id": "sm64_bigfoottouchedme",
+        "name": "BigfootTouchedMe",
+        "image_path": "assets/images/cards/sm64/sm64_bigfoottouchedme.png",
+        "top": 6,
+        "right": 5,
+        "bottom": 7,
+        "left": 10,
+        "rarity": 10,
+        "element": null,
+        "card_sets": ["sm64"]
+    },
+    {
         "card_id": "sm64_conichan",
         "name": "Conichan",
         "image_path": "assets/images/cards/sm64/sm64_conichan.png",

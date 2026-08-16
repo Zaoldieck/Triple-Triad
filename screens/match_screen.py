@@ -500,6 +500,102 @@ class MatchScreen(Screen):
         # prima dell'inizio della partita
         self.match_rules = match_rules
 
+        # elementi disponibili nella regola Elemental
+        self.available_elements = [
+            "earth",
+            "fire",
+            "holy",
+            "ice",
+            "poison",
+            "thunder",
+            "water",
+            "wind"
+        ]
+
+        # associa le coordinate delle caselle
+        # all'eventuale elemento presente
+        self.board_elements = {}
+
+        # preparo le caselle elementali soltanto
+        # quando la relativa regola è attiva
+        if self.match_rules["extra"]["Elemental"]:
+
+            # genero sempre almeno due elementi,
+            # fino a un massimo di quattro
+            elemental_cell_count = random.randint(
+                2,
+                4
+            )
+
+            # preparo tutte le nove coordinate
+            board_positions = [
+                (row, column)
+                for row in range(3)
+                for column in range(3)
+            ]
+
+            # scelgo caselle differenti
+            elemental_positions = random.sample(
+                board_positions,
+                elemental_cell_count
+            )
+
+            # assegno casualmente un elemento
+            # a ciascuna casella selezionata
+            for position in elemental_positions:
+                self.board_elements[position] = (
+                    random.choice(
+                        self.available_elements
+                    )
+                )
+
+        # superfici delle icone mostrate
+        # sulle caselle elementali ancora vuote
+        self.board_element_surfaces = {}
+
+        for element_name in self.available_elements:
+
+            element_surface = pygame.image.load(
+                (
+                    "assets/images/cards/elements/"
+                    f"{element_name}.png"
+                )
+            ).convert_alpha()
+
+            element_surface = pygame.transform.smoothscale(
+                element_surface,
+                (
+                    29,
+                    29
+                )
+            )
+
+            self.board_element_surfaces[
+                element_name
+            ] = element_surface
+
+        # carico gli indicatori permanenti
+        # mostrati sopra le carte modificate
+        self.element_modifier_surfaces = {
+            1: pygame.image.load(
+                (
+                    "assets/images/cards/rules/"
+                    "element_plus_1.png"
+                )
+            ).convert_alpha(),
+
+            -1: pygame.image.load(
+                (
+                    "assets/images/cards/rules/"
+                    "element_minus_1.png"
+                )
+            ).convert_alpha()
+        }
+
+        # conserva il modificatore applicato
+        # a ogni carta posizionata sul tabellone
+        self.board_element_modifiers = {}
+
         # creo il tabellone logico 3x3
         self.board = Board()
 
@@ -1116,16 +1212,24 @@ class MatchScreen(Screen):
 
             neighbour_card = neighbour_cell["card"]
 
-            placed_value = getattr(
+            # per la cattura normale utilizzo i valori
+            # modificati dalla regola Elemental
+            placed_value = self.get_effective_card_value(
                 placed_card,
-                placed_side
+                placed_side,
+                row,
+                column
             )
 
-            neighbour_value = getattr(
+            neighbour_value = self.get_effective_card_value(
                 neighbour_card,
-                neighbour_side
+                neighbour_side,
+                neighbour_row,
+                neighbour_column
             )
 
+            # se il valore effettivo della carta appena piazzata
+            # è maggiore, la carta avversaria viene catturata
             if placed_value > neighbour_value:
 
                 capture_position = (
@@ -1309,14 +1413,20 @@ class MatchScreen(Screen):
 
                 neighbour_card = neighbour_cell["card"]
 
-                source_value = getattr(
+                # durante Combo utilizzo i valori
+                # modificati dalla regola Elemental
+                source_value = self.get_effective_card_value(
                     source_card,
-                    source_side
+                    source_side,
+                    source_row,
+                    source_column
                 )
 
-                neighbour_value = getattr(
+                neighbour_value = self.get_effective_card_value(
                     neighbour_card,
-                    neighbour_side
+                    neighbour_side,
+                    neighbour_row,
+                    neighbour_column
                 )
 
                 # durante Combo si applica soltanto
@@ -1758,6 +1868,74 @@ class MatchScreen(Screen):
             ):
                 return
 
+    # assegna l'eventuale modificatore Elemental
+    # alla carta appena posizionata
+    def apply_element_modifier(
+        self,
+        card,
+        row,
+        column
+    ):
+
+        position = (
+            row,
+            column
+        )
+
+        # una casella normale non modifica la carta
+        if position not in self.board_elements:
+            return
+
+        board_element = self.board_elements[
+            position
+        ]
+
+        # lo stesso elemento aumenta tutti i valori di uno
+        if card.element == board_element:
+            modifier = 1
+
+        # un elemento diverso oppure l'assenza
+        # di elemento riduce tutti i valori di uno
+        else:
+            modifier = -1
+
+        # il modificatore rimane associato alla posizione
+        # anche se la carta viene successivamente catturata
+        self.board_element_modifiers[
+            position
+        ] = modifier
+
+    # restituisce il valore effettivo di un lato,
+    # includendo l'eventuale modificatore Elemental
+    def get_effective_card_value(
+        self,
+        card,
+        side,
+        row,
+        column
+    ):
+
+        # recupero il valore originale della carta
+        original_value = getattr(
+            card,
+            side
+        )
+
+        # una casella normale utilizza modificatore zero
+        elemental_modifier = (
+            self.board_element_modifiers.get(
+                (
+                    row,
+                    column
+                ),
+                0
+            )
+        )
+
+        return (
+            original_value + elemental_modifier
+        )
+
     # piazza sul tabellone la carta scelta dal giocatore
     def place_selected_player_card(self):
 
@@ -1785,6 +1963,13 @@ class MatchScreen(Screen):
         # una casella già occupata non può essere utilizzata
         if not card_placed:
             return
+
+        # applico l'eventuale modificatore della casella
+        self.apply_element_modifier(
+            selected_card,
+            self.selected_board_row,
+            self.selected_board_column
+        )
 
         # confronto la carta appena piazzata
         # con tutte le carte avversarie adiacenti
@@ -2464,6 +2649,14 @@ class MatchScreen(Screen):
             # continuo soltanto se il piazzamento è riuscito
             if card_placed:
 
+                # applico l'eventuale modificatore Elemental
+                # alla carta appena piazzata dall'avversario
+                self.apply_element_modifier(
+                    opponent_card,
+                    self.opponent_target_row,
+                    self.opponent_target_column
+                )
+
                 # confronto la carta avversaria appena piazzata
                 # con tutte le carte del giocatore adiacenti
                 capture_started = self.resolve_basic_captures(
@@ -2604,6 +2797,52 @@ class MatchScreen(Screen):
                         cell_rect,
                         3
                     )
+
+        # disegno le icone elementali soltanto
+        # nelle caselle ancora vuote
+        for (
+            element_position,
+            element_name
+        ) in self.board_elements.items():
+
+            element_row, element_column = (
+                element_position
+            )
+
+            # quando viene posizionata una carta,
+            # questa copre l'elemento della casella
+            if self.board.get_cell(
+                element_row,
+                element_column
+            ) is not None:
+                continue
+
+            element_surface = (
+                self.board_element_surfaces[
+                    element_name
+                ]
+            )
+
+            # posiziono l'elemento esattamente sotto
+            # l'icona che apparirebbe sulla carta
+            element_cell_rect = self.board_cell_rects[
+                element_row
+            ][
+                element_column
+            ]
+
+            element_rect = element_surface.get_rect(
+                topleft=(
+                    element_cell_rect.left + 113,
+                    element_cell_rect.top + 18
+                )
+            )
+
+            screen.blit(
+                element_surface,
+                element_rect
+            )
+
 
         # disegno le carte presenti nelle nove caselle
         for row in range(3):
@@ -2755,6 +2994,35 @@ class MatchScreen(Screen):
                     surface_to_draw,
                     board_card_rect
                 )
+
+                # mostro sopra la carta l'eventuale
+                # modificatore permanente di Elemental
+                element_modifier = (
+                    self.board_element_modifiers.get(
+                        (
+                            row,
+                            column
+                        )
+                    )
+                )
+
+                if element_modifier is not None:
+
+                    modifier_surface = (
+                        self.element_modifier_surfaces[
+                            element_modifier
+                        ]
+                    )
+
+                    # centro il modificatore sopra la carta
+                    modifier_rect = modifier_surface.get_rect(
+                        center=board_card_rect.center
+                    )
+
+                    screen.blit(
+                        modifier_surface,
+                        modifier_rect
+                    )
 
         # posizione iniziale della mano del giocatore
         player_hand_x = 100
