@@ -55,6 +55,28 @@ class TradeScreen(Screen):
             "trade"
         ]
 
+        # numero di carte che devono essere trasferite
+        # secondo la Trade Rule e il risultato
+        if self.trade_rule == "One":
+            self.trade_card_count = 1
+
+        elif self.trade_rule == "Difference":
+            self.trade_card_count = min(
+                abs(
+                    self.player_score
+                    - self.opponent_score
+                ),
+                5
+            )
+
+        elif self.trade_rule == "All":
+            self.trade_card_count = 5
+
+        # Direct verrà gestita separatamente,
+        # perché non utilizza una quantità di selezioni
+        else:
+            self.trade_card_count = 0
+
         # sfondo temporaneo uniforme
         self.background_color = (
             35,
@@ -211,9 +233,43 @@ class TradeScreen(Screen):
             "assets/images/hand_cursor.png"
         )
 
-        # indice della carta scelta temporaneamente;
-        # None significa che non è stata ancora scelta
+        # indice della carta coinvolta nel flip corrente;
+        # None significa che nessuna carta sta flippando
         self.chosen_trade_card = None
+
+        # indici delle carte selezionate dal giocatore,
+        # conservati nello stesso ordine di selezione
+        self.chosen_trade_cards = []
+
+        # indice della carta attualmente mostrata
+        # nell'animazione di acquisizione
+        self.current_acquisition_card = None
+
+        # posizione della prossima carta da mostrare
+        # dentro chosen_trade_cards
+        self.acquisition_queue_position = 0
+
+        # indica se tutte le carte avversarie
+        # devono essere selezionate automaticamente
+        self.automatic_win_selection = (
+            self.match_result == "win"
+            and self.trade_card_count == 5
+            and self.trade_rule in (
+                "Difference",
+                "All"
+            )
+        )
+
+        # posizione della prossima carta
+        # da flippare automaticamente
+        self.automatic_win_selection_position = 0
+
+        # breve attesa prima del primo flip
+        self.automatic_win_selection_delay = 1000
+
+        self.automatic_win_selection_start_time = (
+            pygame.time.get_ticks()
+        )
 
         # indici delle carte che hanno completato
         # l'animazione e non devono più apparire nella riga
@@ -236,8 +292,9 @@ class TradeScreen(Screen):
         # momento iniziale della fase corrente
         self.acquisition_phase_start_time = 0
 
-        # durata di ogni movimento
-        self.acquisition_move_duration = 600
+        # durata di ogni movimento delle carte
+        # vinte o perse durante la presentazione
+        self.acquisition_move_duration = 350
 
         # dimensioni della carta ingrandita
         self.acquisition_card_size = (
@@ -251,8 +308,21 @@ class TradeScreen(Screen):
         # posizione originale nella prima riga
         self.acquisition_origin_center = None
 
-        # carta del giocatore scelta dall'avversario
+        # carta del giocatore coinvolta
+        # nel flip automatico corrente
         self.chosen_lost_card = None
+
+        # carte scelte automaticamente dall'avversario,
+        # ordinate secondo la sequenza di presentazione
+        self.chosen_lost_cards = []
+
+        # carte che hanno completato il flip
+        # automatico dal blu al rosso
+        self.flipped_lost_card_indices = set()
+
+        # posizione della prossima carta persa
+        # da mostrare nella sequenza
+        self.loss_queue_position = 0
 
         # attesa prima della scelta automatica
         self.loss_selection_delay = 1000
@@ -286,39 +356,131 @@ class TradeScreen(Screen):
         # dopo la perdita della carta
         self.removed_player_card_indices = set()
 
-    # seleziona la carta indicata dalla manina
-    # e apre il pannello di conferma
-    def select_trade_card(self):
+    # avvia il flip automatico della prossima
+    # carta quando devono essere trasferite tutte
+    def start_next_automatic_win_flip(self):
 
-        # impedisco selezioni duplicate
-        if self.chosen_trade_card is not None:
+        # tutte le cinque carte sono già state scelte
+        if (
+            self.automatic_win_selection_position
+            >= len(self.opponent_cards)
+        ):
             return
 
-        self.chosen_trade_card = (
-            self.focused_trade_card
+        card_index = (
+            self.automatic_win_selection_position
         )
 
-        # inizio il flip restringendo
-        # il fronte rosso della carta
+        self.chosen_trade_card = card_index
+
+        self.chosen_trade_cards.append(
+            card_index
+        )
+
+        # avvio il flip dal fronte rosso
+        # verso il nuovo fronte blu
         self.trade_flip_phase = "red_shrinking"
 
         self.trade_flip_start_time = (
             pygame.time.get_ticks()
         )
 
-    # conferma definitivamente la carta scelta
-    def confirm_trade_card(self):
+    # seleziona oppure deseleziona
+    # la carta indicata dalla manina
+    def select_trade_card(self):
 
-        if self.chosen_trade_card is None:
+        # durante un flip non posso agire
+        # contemporaneamente su un'altra carta
+        if self.chosen_trade_card is not None:
             return
 
+        # conservo la carta sulla quale
+        # il giocatore sta agendo
+        self.chosen_trade_card = (
+            self.focused_trade_card
+        )
+
+        # se era già selezionata,
+        # avvio il flip inverso verso il rosso
+        if (
+            self.focused_trade_card
+            in self.chosen_trade_cards
+        ):
+            self.trade_flip_phase = "blue_shrinking"
+
+            self.trade_flip_start_time = (
+                pygame.time.get_ticks()
+            )
+
+            return
+
+        # impedisco nuove selezioni quando
+        # è già stato raggiunto il limite
+        if (
+            len(self.chosen_trade_cards)
+            >= self.trade_card_count
+        ):
+            self.chosen_trade_card = None
+            return
+
+        # aggiungo la nuova carta mantenendo
+        # l'ordine della selezione
+        self.chosen_trade_cards.append(
+            self.focused_trade_card
+        )
+
+        # avvio il flip dal rosso al blu
+        self.trade_flip_phase = "red_shrinking"
+
+        self.trade_flip_start_time = (
+            pygame.time.get_ticks()
+        )
+
+    # conferma definitivamente tutte
+    # le carte selezionate dal giocatore
+    def confirm_trade_card(self):
+
+        if not self.chosen_trade_cards:
+            return
+
+        # la presentazione deve rispettare
+        # l'ordine usato durante la selezione
+        self.acquisition_queue_position = 0
+
+        self.start_next_acquisition_card()
+
+    # avvia l'animazione della prossima
+    # carta presente nella coda di acquisizione
+    def start_next_acquisition_card(self):
+
+        # se la coda è terminata,
+        # non rimangono altre carte da mostrare
+        if (
+            self.acquisition_queue_position
+            >= len(self.chosen_trade_cards)
+        ):
+            return
+
+        # recupero l'indice della prossima carta
+        self.current_acquisition_card = (
+            self.chosen_trade_cards[
+                self.acquisition_queue_position
+            ]
+        )
+
+        # mantengo aggiornato anche il riferimento
+        # utilizzato dal disegno e dal pannello del nome
+        self.chosen_trade_card = (
+            self.current_acquisition_card
+        )
+
         selected_card = self.opponent_cards[
-            self.chosen_trade_card
+            self.current_acquisition_card
         ]
 
         # aggiungo una copia alla collezione;
-        # le carte infinite e il limite x99
-        # sono già gestiti da CardCollection
+        # quantità infinite e limite x99
+        # sono gestiti da CardCollection
         self.state.card_collection.add_card(
             selected_card,
             1
@@ -328,7 +490,7 @@ class TradeScreen(Screen):
         # della carta nella riga avversaria
         self.acquisition_origin_center = (
             self.opponent_card_rects[
-                self.chosen_trade_card
+                self.current_acquisition_card
             ].center
         )
 
@@ -336,8 +498,8 @@ class TradeScreen(Screen):
             self.acquisition_origin_center
         )
 
-        # inizio facendo salire la carta
-        # fino a farla uscire dallo schermo
+        # la carta comincia uscendo
+        # dal bordo superiore
         self.acquisition_phase = "leaving_top"
 
         self.acquisition_phase_start_time = (
@@ -406,10 +568,15 @@ class TradeScreen(Screen):
             return
 
         # la selezione manuale è disponibile
-        # soltanto quando il giocatore ha vinto con One
+        # quando il giocatore vince con One
+        # oppure con Difference sotto le cinque carte
         player_selects_card = (
             self.match_result == "win"
-            and self.trade_rule == "One"
+            and self.trade_rule in (
+                "One",
+                "Difference"
+            )
+            and self.trade_card_count < 5
         )
 
         if not player_selects_card:
@@ -603,16 +770,34 @@ class TradeScreen(Screen):
 
             if progress >= 1.0:
 
-                # la carta ha lasciato definitivamente
-                # la riga dell'avversario
+                # la carta corrente ha lasciato
+                # definitivamente la riga avversaria
                 self.removed_opponent_card_indices.add(
-                    self.chosen_trade_card
+                    self.current_acquisition_card
                 )
 
                 self.acquisition_phase = None
                 self.acquisition_card_center = None
 
-                # soltanto adesso mostro Play Again
+                # passo alla posizione successiva
+                # nella coda delle carte selezionate
+                self.acquisition_queue_position += 1
+
+                # se rimangono altre carte,
+                # avvio immediatamente la successiva
+                if (
+                    self.acquisition_queue_position
+                    < len(self.chosen_trade_cards)
+                ):
+                    self.start_next_acquisition_card()
+                    return
+
+                # l'intera sequenza è terminata
+                self.current_acquisition_card = None
+                self.chosen_trade_card = None
+
+                # soltanto dopo l'ultima carta
+                # mostro il pannello Play Again
                 self.state.open_panel(
                     PlayAgainPanel(
                         self.width,
@@ -623,15 +808,52 @@ class TradeScreen(Screen):
                     )
                 )
 
+    # sceglie le carte che il giocatore perderà,
+    # dando priorità assoluta alle rarità maggiori
+    def prepare_lost_card_selection(self):
+
+        card_indices = list(
+            range(len(self.player_cards))
+        )
+
+        # mescolo prima dell'ordinamento:
+        # a parità di rarità la scelta resta casuale
+        random.shuffle(
+            card_indices
+        )
+
+        # l'ordinamento stabile conserva l'ordine casuale
+        # tra carte aventi la stessa rarità
+        card_indices.sort(
+            key=lambda card_index: (
+                self.player_cards[
+                    card_index
+                ].rarity
+            ),
+            reverse=True
+        )
+
+        # conservo soltanto il numero di carte
+        # richiesto dalla Trade Rule
+        self.chosen_lost_cards = card_indices[
+            :self.trade_card_count
+        ]
+
+        # la sequenza partirà dalla prima carta
+        # con priorità maggiore
+        self.loss_queue_position = 0
+
     # aggiorna la scelta automatica dell'avversario
     # e il flip blu verso rosso
+    # aggiorna la selezione automatica dell'avversario
+    # e i flip consecutivi dal blu al rosso
     def update_loss_selection(self):
 
         current_time = pygame.time.get_ticks()
 
-        # dopo un secondo scelgo una carta
-        # usando la rarità come peso
-        if self.chosen_lost_card is None:
+        # preparo la selezione soltanto una volta,
+        # dopo il ritardo iniziale
+        if not self.chosen_lost_cards:
 
             elapsed_time = (
                 current_time
@@ -641,29 +863,26 @@ class TradeScreen(Screen):
             if elapsed_time < self.loss_selection_delay:
                 return
 
-            card_indices = list(
-                range(len(self.player_cards))
+            self.prepare_lost_card_selection()
+
+            if not self.chosen_lost_cards:
+                return
+
+            # comincio dalla prima carta scelta
+            self.loss_queue_position = 0
+
+            self.chosen_lost_card = (
+                self.chosen_lost_cards[
+                    self.loss_queue_position
+                ]
             )
 
-            rarity_weights = [
-                card.rarity
-                for card in self.player_cards
-            ]
-
-            self.chosen_lost_card = random.choices(
-                card_indices,
-                weights=rarity_weights,
-                k=1
-            )[0]
-
-            # avvio il flip dal fronte blu
             self.loss_flip_phase = "blue_shrinking"
-
             self.loss_flip_start_time = current_time
             return
 
-        # terminato il flip, per ora
-        # lascio la carta rossa nella seconda riga
+        # se tutti i flip sono terminati,
+        # questo metodo non deve avanzare ulteriormente
         if self.loss_flip_phase is None:
             return
 
@@ -676,49 +895,110 @@ class TradeScreen(Screen):
             return
 
         if self.loss_flip_phase == "blue_shrinking":
-            self.loss_flip_phase = "loss_back_expanding"
+            self.loss_flip_phase = (
+                "loss_back_expanding"
+            )
 
-        elif self.loss_flip_phase == "loss_back_expanding":
-            self.loss_flip_phase = "loss_back_shrinking"
+        elif (
+            self.loss_flip_phase
+            == "loss_back_expanding"
+        ):
+            self.loss_flip_phase = (
+                "loss_back_shrinking"
+            )
 
-        elif self.loss_flip_phase == "loss_back_shrinking":
+        elif (
+            self.loss_flip_phase
+            == "loss_back_shrinking"
+        ):
             self.loss_flip_phase = "red_expanding"
 
         elif self.loss_flip_phase == "red_expanding":
 
-            self.loss_flip_phase = None
-
-            # recupero la posizione originale
-            # nella seconda riga
-            self.loss_origin_center = (
-                self.player_card_rects[
-                    self.chosen_lost_card
-                ].center
-            )
-
-            self.loss_card_center = (
-                self.loss_origin_center
-            )
-
-            # rimuovo una copia dalla collezione;
-            # le carte infinite rimangono invariate
-            lost_card = self.player_cards[
+            # la carta corrente rimane definitivamente rossa
+            self.flipped_lost_card_indices.add(
                 self.chosen_lost_card
-            ]
-
-            self.state.card_collection.remove_card(
-                lost_card,
-                1
             )
 
-            # la carta persa comincia
-            # uscendo dal bordo inferiore
-            self.loss_movement_phase = "leaving_bottom"
+            self.loss_flip_phase = None
+            self.loss_queue_position += 1
 
-            self.loss_movement_start_time = current_time
+            # se rimangono carte da flippare,
+            # avvio immediatamente la successiva
+            if (
+                self.loss_queue_position
+                < len(self.chosen_lost_cards)
+            ):
+                self.chosen_lost_card = (
+                    self.chosen_lost_cards[
+                        self.loss_queue_position
+                    ]
+                )
+
+                self.loss_flip_phase = (
+                    "blue_shrinking"
+                )
+
+                self.loss_flip_start_time = current_time
+                return
+
+            # tutti i flip sono terminati;
+            # preparo la presentazione della prima carta
+            self.loss_queue_position = 0
+            self.start_next_loss_movement()
             return
 
+        # ogni nuova fase parte dal momento corrente
         self.loss_flip_start_time = current_time
+
+    # avvia la presentazione della prossima
+    # carta scelta automaticamente dall'avversario
+    def start_next_loss_movement(self):
+
+        if (
+            self.loss_queue_position
+            >= len(self.chosen_lost_cards)
+        ):
+            return
+
+        self.chosen_lost_card = (
+            self.chosen_lost_cards[
+                self.loss_queue_position
+            ]
+        )
+
+        # recupero la posizione originale
+        # della carta nella seconda riga
+        self.loss_origin_center = (
+            self.player_card_rects[
+                self.chosen_lost_card
+            ].center
+        )
+
+        self.loss_card_center = (
+            self.loss_origin_center
+        )
+
+        # rimuovo una copia dalla collezione;
+        # le carte infinite rimangono invariate
+        lost_card = self.player_cards[
+            self.chosen_lost_card
+        ]
+
+        self.state.card_collection.remove_card(
+            lost_card,
+            1
+        )
+
+        # la carta persa comincia uscendo
+        # dal bordo inferiore
+        self.loss_movement_phase = (
+            "leaving_bottom"
+        )
+
+        self.loss_movement_start_time = (
+            pygame.time.get_ticks()
+        )
 
     def update_loss_movement(self):
 
@@ -829,6 +1109,8 @@ class TradeScreen(Screen):
 
             if progress >= 1.0:
 
+                # la carta corrente ha lasciato
+                # definitivamente la riga del giocatore
                 self.removed_player_card_indices.add(
                     self.chosen_lost_card
                 )
@@ -836,6 +1118,24 @@ class TradeScreen(Screen):
                 self.loss_movement_phase = None
                 self.loss_card_center = None
 
+                # passo alla carta successiva
+                # nella coda delle perdite
+                self.loss_queue_position += 1
+
+                # se rimangono altre carte,
+                # ne avvio immediatamente la presentazione
+                if (
+                    self.loss_queue_position
+                    < len(self.chosen_lost_cards)
+                ):
+                    self.start_next_loss_movement()
+                    return
+
+                # l'intera sequenza è terminata
+                self.chosen_lost_card = None
+
+                # Play Again appare soltanto
+                # dopo l'uscita dell'ultima carta
                 self.state.open_panel(
                     PlayAgainPanel(
                         self.width,
@@ -859,17 +1159,43 @@ class TradeScreen(Screen):
 
     def update(self):
 
-        # con una sconfitta e Trade Rule One,
-        # l'avversario sceglie automaticamente
+        # con una sconfitta, l'avversario sceglie
+        # automaticamente con One, Difference e All
         if (
             self.match_result == "loss"
-            and self.trade_rule == "One"
+            and self.trade_rule in (
+                "One",
+                "Difference",
+                "All"
+            )
         ):
 
             if self.loss_movement_phase is not None:
                 self.update_loss_movement()
             else:
                 self.update_loss_selection()
+
+            return
+
+        # quando il giocatore vince tutte le carte,
+        # avvio automaticamente il primo flip
+        if (
+            self.automatic_win_selection
+            and not self.chosen_trade_cards
+            and self.trade_flip_phase is None
+            and self.acquisition_phase is None
+        ):
+
+            elapsed_time = (
+                pygame.time.get_ticks()
+                - self.automatic_win_selection_start_time
+            )
+
+            if (
+                elapsed_time
+                >= self.automatic_win_selection_delay
+            ):
+                self.start_next_automatic_win_flip()
 
             return
 
@@ -909,15 +1235,45 @@ class TradeScreen(Screen):
             # la carta rimane blu
             self.trade_flip_phase = None
 
-            # soltanto ora apro la conferma
-            self.state.open_panel(
-                TradeCardConfirmationPanel(
-                    self.width,
-                    self.height,
-                    self.state,
-                    self
+            # con All oppure Difference da cinque carte
+            # continuo automaticamente senza conferma
+            if self.automatic_win_selection:
+
+                self.automatic_win_selection_position += 1
+
+                # avvio il flip della carta successiva
+                if (
+                    self.automatic_win_selection_position
+                    < len(self.opponent_cards)
+                ):
+                    self.chosen_trade_card = None
+                    self.start_next_automatic_win_flip()
+                    return
+
+                # dopo il quinto flip avvio direttamente
+                # la presentazione delle cinque carte
+                self.confirm_trade_card()
+                return
+
+            # nella selezione manuale apro la conferma
+            # quando raggiungo il numero richiesto
+            if (
+                len(self.chosen_trade_cards)
+                >= self.trade_card_count
+            ):
+                self.state.open_panel(
+                    TradeCardConfirmationPanel(
+                        self.width,
+                        self.height,
+                        self.state,
+                        self
+                    )
                 )
-            )
+
+            # altrimenti permetto al giocatore
+            # di scegliere la carta successiva
+            else:
+                self.chosen_trade_card = None
 
             return
 
@@ -944,7 +1300,16 @@ class TradeScreen(Screen):
 
         elif self.trade_flip_phase == "red_expanding":
 
-            # annullo completamente la selezione
+            # rimuovo dalla selezione la carta
+            # che ha appena completato il flip inverso
+            if (
+                self.chosen_trade_card
+                in self.chosen_trade_cards
+            ):
+                self.chosen_trade_cards.remove(
+                    self.chosen_trade_card
+                )
+
             self.trade_flip_phase = None
             self.chosen_trade_card = None
             return
@@ -1021,14 +1386,9 @@ class TradeScreen(Screen):
 
         elif self.trade_rule == "Difference":
 
-            cards_to_select = abs(
-                self.player_score
-                - self.opponent_score
-            )
-
             title_text = (
                 "Trade Rule: Difference - "
-                f"Select {cards_to_select} Cards"
+                f"Select {self.trade_card_count} Cards"
             )
 
         elif self.trade_rule == "All":
@@ -1123,91 +1483,91 @@ class TradeScreen(Screen):
             surface_to_draw = red_card_surface
             animated_width = self.trade_card_size[0]
 
-            # gestisco soltanto la carta scelta
-            if i == self.chosen_trade_card:
+            # tutte le carte già selezionate
+            # devono rimanere con il fronte blu
+            if i in self.chosen_trade_cards:
+                surface_to_draw = (
+                    self.selected_opponent_card_surfaces[i]
+                )
+
+            # soltanto la carta corrente
+            # deve mostrare le fasi del flip
+            if (
+                i == self.chosen_trade_card
+                and self.trade_flip_phase is not None
+            ):
 
                 blue_card_surface = (
                     self.selected_opponent_card_surfaces[i]
                 )
 
-                # se non è in corso un flip,
-                # la selezione confermata rimane blu
-                if self.trade_flip_phase is None:
-                    surface_to_draw = blue_card_surface
+                flip_progress = (
+                    pygame.time.get_ticks()
+                    - self.trade_flip_start_time
+                ) / self.trade_flip_phase_duration
 
-                else:
-                    flip_progress = (
-                        pygame.time.get_ticks()
-                        - self.trade_flip_start_time
-                    ) / self.trade_flip_phase_duration
+                flip_progress = max(
+                    0.0,
+                    min(1.0, flip_progress)
+                )
 
-                    flip_progress = max(
-                        0.0,
-                        min(1.0, flip_progress)
+                if self.trade_flip_phase == "red_shrinking":
+                    surface_to_draw = red_card_surface
+
+                    animated_width = int(
+                        self.trade_card_size[0]
+                        * (1.0 - flip_progress)
                     )
 
-                    # il fronte rosso si restringe
-                    if self.trade_flip_phase == "red_shrinking":
-                        surface_to_draw = red_card_surface
-                        animated_width = int(
-                            self.trade_card_size[0]
-                            * (1.0 - flip_progress)
-                        )
+                elif self.trade_flip_phase in (
+                    "back_expanding",
+                    "reverse_back_expanding"
+                ):
+                    surface_to_draw = (
+                        self.trade_card_back_surface
+                    )
 
-                    # il retro si allarga
-                    elif self.trade_flip_phase in (
-                        "back_expanding",
-                        "reverse_back_expanding"
-                    ):
-                        surface_to_draw = (
-                            self.trade_card_back_surface
-                        )
+                    animated_width = int(
+                        self.trade_card_size[0]
+                        * flip_progress
+                    )
 
-                        animated_width = int(
-                            self.trade_card_size[0]
-                            * flip_progress
-                        )
+                elif self.trade_flip_phase in (
+                    "back_shrinking",
+                    "reverse_back_shrinking"
+                ):
+                    surface_to_draw = (
+                        self.trade_card_back_surface
+                    )
 
-                    # il retro si restringe
-                    elif self.trade_flip_phase in (
-                        "back_shrinking",
-                        "reverse_back_shrinking"
-                    ):
-                        surface_to_draw = (
-                            self.trade_card_back_surface
-                        )
+                    animated_width = int(
+                        self.trade_card_size[0]
+                        * (1.0 - flip_progress)
+                    )
 
-                        animated_width = int(
-                            self.trade_card_size[0]
-                            * (1.0 - flip_progress)
-                        )
+                elif self.trade_flip_phase == "blue_expanding":
+                    surface_to_draw = blue_card_surface
 
-                    # il fronte blu si allarga
-                    elif self.trade_flip_phase == "blue_expanding":
-                        surface_to_draw = blue_card_surface
+                    animated_width = int(
+                        self.trade_card_size[0]
+                        * flip_progress
+                    )
 
-                        animated_width = int(
-                            self.trade_card_size[0]
-                            * flip_progress
-                        )
+                elif self.trade_flip_phase == "blue_shrinking":
+                    surface_to_draw = blue_card_surface
 
-                    # il fronte blu si restringe
-                    elif self.trade_flip_phase == "blue_shrinking":
-                        surface_to_draw = blue_card_surface
+                    animated_width = int(
+                        self.trade_card_size[0]
+                        * (1.0 - flip_progress)
+                    )
 
-                        animated_width = int(
-                            self.trade_card_size[0]
-                            * (1.0 - flip_progress)
-                        )
+                elif self.trade_flip_phase == "red_expanding":
+                    surface_to_draw = red_card_surface
 
-                    # il fronte rosso si riallarga
-                    elif self.trade_flip_phase == "red_expanding":
-                        surface_to_draw = red_card_surface
-
-                        animated_width = int(
-                            self.trade_card_size[0]
-                            * flip_progress
-                        )
+                    animated_width = int(
+                        self.trade_card_size[0]
+                        * flip_progress
+                    )
 
             # evito una superficie larga zero pixel
             animated_width = max(
@@ -1266,67 +1626,80 @@ class TradeScreen(Screen):
             ):
                 continue
 
+            # normalmente la carta appartiene
+            # ancora al giocatore ed è blu
             surface_to_draw = blue_card_surface
             animated_width = self.trade_card_size[0]
 
-            # gestisco il flip della carta
-            # scelta automaticamente
-            if i == self.chosen_lost_card:
+            # le carte che hanno completato il flip
+            # devono rimanere permanentemente rosse
+            if i in self.flipped_lost_card_indices:
+                surface_to_draw = (
+                    self.lost_player_card_surfaces[i]
+                )
+
+            # soltanto la carta corrente
+            # mostra le singole fasi del flip
+            if (
+                i == self.chosen_lost_card
+                and self.loss_flip_phase is not None
+            ):
 
                 red_card_surface = (
                     self.lost_player_card_surfaces[i]
                 )
 
-                # dopo il flip la carta rimane rossa
-                if self.loss_flip_phase is None:
-                    surface_to_draw = red_card_surface
+                flip_progress = (
+                    pygame.time.get_ticks()
+                    - self.loss_flip_start_time
+                ) / self.trade_flip_phase_duration
 
-                else:
-                    flip_progress = (
-                        pygame.time.get_ticks()
-                        - self.loss_flip_start_time
-                    ) / self.trade_flip_phase_duration
+                flip_progress = max(
+                    0.0,
+                    min(1.0, flip_progress)
+                )
 
-                    flip_progress = max(
-                        0.0,
-                        min(1.0, flip_progress)
+                if self.loss_flip_phase == "blue_shrinking":
+                    surface_to_draw = blue_card_surface
+
+                    animated_width = int(
+                        self.trade_card_size[0]
+                        * (1.0 - flip_progress)
                     )
 
-                    if self.loss_flip_phase == "blue_shrinking":
-                        surface_to_draw = blue_card_surface
+                elif (
+                    self.loss_flip_phase
+                    == "loss_back_expanding"
+                ):
+                    surface_to_draw = (
+                        self.trade_card_back_surface
+                    )
 
-                        animated_width = int(
-                            self.trade_card_size[0]
-                            * (1.0 - flip_progress)
-                        )
+                    animated_width = int(
+                        self.trade_card_size[0]
+                        * flip_progress
+                    )
 
-                    elif self.loss_flip_phase == "loss_back_expanding":
-                        surface_to_draw = (
-                            self.trade_card_back_surface
-                        )
+                elif (
+                    self.loss_flip_phase
+                    == "loss_back_shrinking"
+                ):
+                    surface_to_draw = (
+                        self.trade_card_back_surface
+                    )
 
-                        animated_width = int(
-                            self.trade_card_size[0]
-                            * flip_progress
-                        )
+                    animated_width = int(
+                        self.trade_card_size[0]
+                        * (1.0 - flip_progress)
+                    )
 
-                    elif self.loss_flip_phase == "loss_back_shrinking":
-                        surface_to_draw = (
-                            self.trade_card_back_surface
-                        )
+                elif self.loss_flip_phase == "red_expanding":
+                    surface_to_draw = red_card_surface
 
-                        animated_width = int(
-                            self.trade_card_size[0]
-                            * (1.0 - flip_progress)
-                        )
-
-                    elif self.loss_flip_phase == "red_expanding":
-                        surface_to_draw = red_card_surface
-
-                        animated_width = int(
-                            self.trade_card_size[0]
-                            * flip_progress
-                        )
+                    animated_width = int(
+                        self.trade_card_size[0]
+                        * flip_progress
+                    )
 
             animated_width = max(
                 1,
@@ -1420,13 +1793,19 @@ class TradeScreen(Screen):
                 acquisition_rect
             )
 
-        # con Trade Rule One e una vittoria,
-        # la manina indica la carta avversaria scelta
+        # durante la selezione manuale,
+        # la manina indica la carta avversaria
         if (
             self.match_result == "win"
-            and self.trade_rule == "One"
+            and self.trade_rule in (
+                "One",
+                "Difference"
+            )
+            and self.trade_card_count < 5
             and self.opponent_card_rects
             and self.chosen_trade_card is None
+            and len(self.chosen_trade_cards)
+            < self.trade_card_count
         ):
 
             focused_card_rect = (
@@ -1446,9 +1825,15 @@ class TradeScreen(Screen):
         # il nome della carta indicata
         if (
             self.match_result == "win"
-            and self.trade_rule == "One"
+            and self.trade_rule in (
+                "One",
+                "Difference"
+            )
+            and self.trade_card_count < 5
             and self.opponent_cards
             and self.chosen_trade_card is None
+            and len(self.chosen_trade_cards)
+            < self.trade_card_count
         ):
 
             focused_card = self.opponent_cards[

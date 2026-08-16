@@ -109,26 +109,32 @@ class MatchScreen(Screen):
                 opponent_cards
             )
 
-        # durante una nuova partita genero normalmente
-        # cinque carte avversarie casuali di rarità 1
+        # durante una nuova partita l'avversario
+        # può utilizzare tutte le carte già scoperte
         else:
 
-            rarity_one_cards = [
+            discovered_cards = [
                 card
                 for card in available_opponent_cards
-                if card.rarity == 1
+                if (
+                    self.state.card_collection.is_discovered(
+                        card
+                    )
+                )
             ]
 
-            # verifico che esistano almeno
-            # cinque carte utilizzabili
-            if len(rarity_one_cards) < 5:
+            # una mano richiede almeno cinque
+            # carte differenti già sbloccate
+            if len(discovered_cards) < 5:
                 raise ValueError(
-                    "Not enough rarity 1 cards "
+                    "Not enough discovered cards "
                     "to generate the opponent hand"
                 )
 
+            # genero cinque carte differenti
+            # tra tutte quelle scoperte dal giocatore
             self.opponent_cards = random.sample(
-                rarity_one_cards,
+                discovered_cards,
                 5
             )
 

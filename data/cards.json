@@ -1452,18 +1452,6 @@
         "card_sets": ["sm64"]
     },
     {
-        "card_id": "sm64_patobrine",
-        "name": "PatoBrine",
-        "image_path": "assets/images/cards/sm64/sm64_patobrine.png",
-        "top": 6,
-        "right": 10,
-        "bottom": 10,
-        "left": 2,
-        "rarity": 10,
-        "element": null,
-        "card_sets": ["sm64"]
-    },
-    {
         "card_id": "sm64_bigfoottouchedme",
         "name": "BigfootTouchedMe",
         "image_path": "assets/images/cards/sm64/sm64_bigfoottouchedme.png",
@@ -1488,6 +1476,18 @@
         "card_sets": ["sm64"]
     },
     {
+        "card_id": "sm64_patobrine",
+        "name": "PatoBrine",
+        "image_path": "assets/images/cards/sm64/sm64_patobrine.png",
+        "top": 6,
+        "right": 10,
+        "bottom": 10,
+        "left": 2,
+        "rarity": 10,
+        "element": null,
+        "card_sets": ["sm64"]
+    },
+    {
         "card_id": "sm64_amsixx",
         "name": "Amsixx",
         "image_path": "assets/images/cards/sm64/sm64_amsixx.png",
@@ -1495,6 +1495,42 @@
         "right": 9,
         "bottom": 9,
         "left": 1,
+        "rarity": 10,
+        "element": null,
+        "card_sets": ["sm64"]
+    },
+    {
+        "card_id": "sm64_wouterbm",
+        "name": "Wouter_BM",
+        "image_path": "assets/images/cards/sm64/sm64_wouterbm.png",
+        "top": 8,
+        "right": 2,
+        "bottom": 10,
+        "left": 9,
+        "rarity": 10,
+        "element": null,
+        "card_sets": ["sm64"]
+    },
+    {
+        "card_id": "sm64_katze789",
+        "name": "Katze789",
+        "image_path": "assets/images/cards/sm64/sm64_katze789.png",
+        "top": 7,
+        "right": 10,
+        "bottom": 9,
+        "left": 3,
+        "rarity": 10,
+        "element": null,
+        "card_sets": ["sm64"]
+    },
+    {
+        "card_id": "sm64_nekosuke_563",
+        "name": "Nekosuke_563",
+        "image_path": "assets/images/cards/sm64/sm64_nekosuke_563.png",
+        "top": 8,
+        "right": 3,
+        "bottom": 8,
+        "left": 10,
         "rarity": 10,
         "element": null,
         "card_sets": ["sm64"]
