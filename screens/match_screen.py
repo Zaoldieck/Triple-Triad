@@ -109,33 +109,13 @@ class MatchScreen(Screen):
                 opponent_cards
             )
 
-        # durante una nuova partita l'avversario
-        # può utilizzare tutte le carte già scoperte
+        # durante una nuova partita genero
+        # una mano bilanciata sulle rarità del player
         else:
-
-            discovered_cards = [
-                card
-                for card in available_opponent_cards
-                if (
-                    self.state.card_collection.is_discovered(
-                        card
-                    )
+            self.opponent_cards = (
+                self.generate_opponent_hand(
+                    available_opponent_cards
                 )
-            ]
-
-            # una mano richiede almeno cinque
-            # carte differenti già sbloccate
-            if len(discovered_cards) < 5:
-                raise ValueError(
-                    "Not enough discovered cards "
-                    "to generate the opponent hand"
-                )
-
-            # genero cinque carte differenti
-            # tra tutte quelle scoperte dal giocatore
-            self.opponent_cards = random.sample(
-                discovered_cards,
-                5
             )
 
         # dimensioni delle carte mostrate durante la partita
@@ -722,6 +702,200 @@ class MatchScreen(Screen):
             self.result_surfaces[
                 result_name
             ] = result_surface
+
+    # sceglie una carta scoperta vicina
+    # alla rarità richiesta
+    def choose_discovered_opponent_card(
+        self,
+        available_cards,
+        target_rarity,
+        used_card_ids
+    ):
+
+        candidates = [
+            card
+            for card in available_cards
+            if (
+                card.card_id not in used_card_ids
+                and (
+                    self.state.card_collection.is_discovered(
+                        card
+                    )
+                )
+            )
+        ]
+
+        if not candidates:
+            return None
+
+        # calcolo la distanza minima
+        # dalla rarità richiesta
+        minimum_distance = min(
+            abs(
+                card.rarity - target_rarity
+            )
+            for card in candidates
+        )
+
+        nearest_candidates = [
+            card
+            for card in candidates
+            if (
+                abs(
+                    card.rarity - target_rarity
+                )
+                == minimum_distance
+            )
+        ]
+
+        # a parità di distanza preferisco
+        # la rarità inferiore
+        lower_candidates = [
+            card
+            for card in nearest_candidates
+            if card.rarity <= target_rarity
+        ]
+
+        if lower_candidates:
+            nearest_candidates = lower_candidates
+
+        return random.choice(
+            nearest_candidates
+        )
+
+    # genera una mano avversaria bilanciata
+    # rispetto alle rarità scelte dal giocatore
+    def generate_opponent_hand(
+        self,
+        available_cards
+    ):
+
+        if len(self.player_cards) != 5:
+            raise ValueError(
+                "The player hand must contain five cards"
+            )
+
+        # ordino il profilo di rarità del giocatore
+        player_rarity_profile = sorted(
+            card.rarity
+            for card in self.player_cards
+        )
+
+        highest_player_rarity = (
+            player_rarity_profile[-1]
+        )
+
+        opponent_hand = []
+        used_card_ids = set()
+
+        # riservo lo slot della rarità maggiore
+        # all'eventuale carta da sbloccare
+        normal_rarity_profile = (
+            player_rarity_profile[:-1]
+        )
+
+        # genero le prime quattro carte usando
+        # carte già scoperte dal giocatore
+        for target_rarity in normal_rarity_profile:
+
+            selected_card = (
+                self.choose_discovered_opponent_card(
+                    available_cards,
+                    target_rarity,
+                    used_card_ids
+                )
+            )
+
+            if selected_card is None:
+                raise ValueError(
+                    "Not enough discovered cards "
+                    "to generate the opponent hand"
+                )
+
+            opponent_hand.append(
+                selected_card
+            )
+
+            used_card_ids.add(
+                selected_card.card_id
+            )
+
+        # l'avversario può proporre carte nuove
+        # fino a una rarità sopra quella massima
+        # giocata dal player
+        maximum_unlock_rarity = min(
+            highest_player_rarity + 1,
+            10
+        )
+
+        unlock_candidates = []
+
+        # cerco la prima rarità incompleta,
+        # iniziando sempre dalla rarità 2
+        for rarity in range(
+            2,
+            maximum_unlock_rarity + 1
+        ):
+
+            missing_cards_for_rarity = [
+                card
+                for card in available_cards
+                if (
+                    card.card_id not in used_card_ids
+                    and card.rarity == rarity
+                    and (
+                        self.state.card_collection.get_quantity(
+                            card
+                        )
+                        == 0
+                    )
+                )
+            ]
+
+            # se questa rarità contiene ancora carte x0,
+            # non posso avanzare alla rarità successiva
+            if missing_cards_for_rarity:
+                unlock_candidates = (
+                    missing_cards_for_rarity
+                )
+                break
+
+        # scelgo una carta appartenente
+        # alla prima rarità ancora incompleta
+        if unlock_candidates:
+
+            final_card = random.choice(
+                unlock_candidates
+            )
+
+        # se tutte le rarità accessibili sono complete,
+        # completo normalmente la mano avversaria
+        else:
+
+            final_card = (
+                self.choose_discovered_opponent_card(
+                    available_cards,
+                    highest_player_rarity,
+                    used_card_ids
+                )
+            )
+
+        if final_card is None:
+            raise ValueError(
+                "Unable to complete the opponent hand"
+            )
+
+        opponent_hand.append(
+            final_card
+        )
+
+        # evito che la carta sbloccabile
+        # occupi sempre l'ultimo slot visibile
+        random.shuffle(
+            opponent_hand
+        )
+
+        return opponent_hand
 
     # costruisce una freccia triangolare
     # con una sfumatura verticale rossa
@@ -2767,8 +2941,8 @@ class MatchScreen(Screen):
                     self.selected_opponent_card
                 )
 
-                # controllo anche il caso futuro nel quale
-                # sia l'avversario a riempire l'ultima casella
+                # controllo il caso nel quale l'avversario
+                # riempie l'ultima casella del tabellone
                 if self.check_match_finished():
                     return
 
@@ -2797,12 +2971,10 @@ class MatchScreen(Screen):
                         "player"
                     )
 
-    # disegna nella parte bassa dello schermo
-    # il pannello con il nome della carta indicata
     def draw_card_name_panel(
         self,
         screen,
-        card_name
+        card
     ):
 
         # centro il pannello orizzontalmente
@@ -2834,12 +3006,34 @@ class MatchScreen(Screen):
             2
         )
 
+        # recupero la quantità attualmente posseduta
+        card_quantity = (
+            self.state.card_collection.get_quantity(
+                card
+            )
+        )
+
+        # una carta a x0 viene evidenziata in blu;
+        # le carte possedute e infinite restano bianche
+        if card_quantity == 0:
+            card_name_color = (
+                70,
+                160,
+                255
+            )
+        else:
+            card_name_color = (
+                255,
+                255,
+                255
+            )
+
         # preparo il nome della carta
         card_name_surface = (
             self.card_name_panel_font.render(
-                card_name,
+                card.name,
                 True,
-                (255, 255, 255)
+                card_name_color
             )
         )
 
@@ -3268,9 +3462,9 @@ class MatchScreen(Screen):
                     card_rect
                 )
 
-        # nome da mostrare nel pannello descrittivo;
+        # carta da mostrare nel pannello descrittivo;
         # None significa che il pannello resta nascosto
-        displayed_card_name = None
+        displayed_card = None
 
         # quando il giocatore sta scegliendo dalla propria mano,
         # mostro la carta spostata lateralmente
@@ -3281,16 +3475,12 @@ class MatchScreen(Screen):
             not in self.played_player_card_indices
         ):
 
-            selected_player_card = self.player_cards[
+            displayed_card = self.player_cards[
                 self.selected_player_card
             ]
 
-            displayed_card_name = (
-                selected_player_card.name
-            )
-
-        # durante i primi 500 ms visibili del turno avversario,
-        # mostro il nome della carta spostata lateralmente
+        # durante la scelta visibile dell'avversario,
+        # mostro la carta spostata lateralmente
         elif (
             self.input_mode == "opponent_turn"
             and self.opponent_turn_phase
@@ -3299,16 +3489,12 @@ class MatchScreen(Screen):
             and self.opponent_cards_face_up
         ):
 
-            selected_opponent_card = self.opponent_cards[
+            displayed_card = self.opponent_cards[
                 self.selected_opponent_card
             ]
 
-            displayed_card_name = (
-                selected_opponent_card.name
-            )
-
         # quando la manina si trova sul tabellone,
-        # mostro il nome soltanto se la casella è occupata
+        # mostro la carta soltanto se la casella è occupata
         elif self.input_mode == "board":
 
             indicated_board_cell = self.board.get_cell(
@@ -3317,16 +3503,16 @@ class MatchScreen(Screen):
             )
 
             if indicated_board_cell is not None:
-                displayed_card_name = (
-                    indicated_board_cell["card"].name
+                displayed_card = (
+                    indicated_board_cell["card"]
                 )
 
         # disegno il pannello soltanto quando
-        # esiste realmente un nome da mostrare
-        if displayed_card_name is not None:
+        # esiste realmente una carta da mostrare
+        if displayed_card is not None:
             self.draw_card_name_panel(
                 screen,
-                displayed_card_name
+                displayed_card
             )
 
         # recupero il numero azzurro del giocatore

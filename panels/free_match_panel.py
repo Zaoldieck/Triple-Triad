@@ -11,7 +11,6 @@ from ui.animated_hand_cursor import AnimatedHandCursor # cursore animato riutili
 from panels.panel import Panel
 # schermata nella quale viene giocata la partita
 from screens.match_screen import MatchScreen
-from screens.trade_screen import TradeScreen
 
 # pannello di preparazione della modalità Free Match
 class FreeMatchPanel(Panel):

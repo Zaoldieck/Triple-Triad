@@ -22,15 +22,14 @@ class DeckPanel(Panel):
         self.panel_width = 900
         self.panel_height = 550
 
-        # dimensioni iniziali per l'animazione
+        # dimensioni iniziali dell'animazione
         self.current_width = 0
         self.current_height = 0
 
-        # velocita apertura pannello (animazione)
-        self.open_speed = 3
-
-        # indica se il pannello e' ancora in apertura
+        # apertura indipendente dagli FPS
         self.opening = True
+        self.open_duration = 180
+        self.open_start_time = pygame.time.get_ticks()
 
         # colore pannello
         self.color = (100, 100, 100)
@@ -96,8 +95,12 @@ class DeckPanel(Panel):
         # pagina che verrà mostrata al termine dell'animazione
         self.target_page = 0
 
-        # velocità dello scorrimento orizzontale
-        self.page_animation_speed = 6
+        # durata di ciascuna fase del cambio pagina,
+        # indipendente dal numero di FPS
+        self.page_animation_duration = 180
+
+        # momento iniziale della fase corrente
+        self.page_animation_start_time = 0
 
         # numero carte per pagina
         self.cards_per_page = 11
@@ -243,66 +246,84 @@ class DeckPanel(Panel):
         # salvo la direzione richiesta
         self.page_animation_direction = direction
 
-        # l'animazione comincia facendo uscire la pagina attuale
+        # l'animazione comincia facendo uscire
+        # la pagina attualmente visibile
         self.page_animation_phase = "out"
         self.page_animation_offset = 0.0
         self.page_animating = True
 
-    # aggiorna lo scorrimento orizzontale delle righe
+        self.page_animation_start_time = (
+            pygame.time.get_ticks()
+        )
+
+    # aggiorna lo scorrimento orizzontale
+    # delle righe durante il cambio rarità
     def update_page_animation(self):
 
-        # non faccio nulla se non è in corso un'animazione
         if not self.page_animating:
             return
 
-        # larghezza da percorrere per uscire dall'area della lista
         animation_distance = 400
+        current_time = pygame.time.get_ticks()
 
-        # sposto le righe nella direzione dell'animazione
-        self.page_animation_offset -= (
-            self.page_animation_direction
-            * self.page_animation_speed
+        elapsed_time = (
+            current_time
+            - self.page_animation_start_time
         )
 
-        # la pagina attuale ha terminato l'uscita
-        if (
-            self.page_animation_phase == "out"
-            and abs(self.page_animation_offset) >= animation_distance
-        ):
+        animation_progress = min(
+            1.0,
+            elapsed_time
+            / self.page_animation_duration
+        )
 
-            # applico la nuova pagina
-            self.current_page = self.target_page
+        # movimento rapido all'inizio
+        # e più morbido alla fine
+        eased_progress = (
+            1.0
+            - (1.0 - animation_progress) ** 3
+        )
 
-            # seleziono la prima carta della nuova pagina
-            self.selected_card = 0
+        # faccio uscire la pagina attuale
+        if self.page_animation_phase == "out":
 
-            # mostro la lista della nuova rarità
-            # partendo dalla sua prima carta
-            self.first_visible_card = 0
+            self.page_animation_offset = (
+                -self.page_animation_direction
+                * animation_distance
+                * eased_progress
+            )
 
-            # faccio partire la nuova pagina dal lato opposto
+            if animation_progress >= 1.0:
+
+                # applico la nuova rarità
+                self.current_page = self.target_page
+                self.selected_card = 0
+                self.first_visible_card = 0
+
+                # la nuova pagina entra
+                # dal lato opposto
+                self.page_animation_phase = "in"
+
+                self.page_animation_offset = (
+                    self.page_animation_direction
+                    * animation_distance
+                )
+
+                self.page_animation_start_time = (
+                    current_time
+                )
+
+        # faccio entrare la nuova pagina
+        elif self.page_animation_phase == "in":
+
             self.page_animation_offset = (
                 self.page_animation_direction
                 * animation_distance
+                * (1.0 - eased_progress)
             )
 
-            # comincia la fase di entrata
-            self.page_animation_phase = "in"
+            if animation_progress >= 1.0:
 
-        # la nuova pagina ha raggiunto la posizione centrale
-        elif self.page_animation_phase == "in":
-
-            reached_center = (
-                self.page_animation_direction == 1
-                and self.page_animation_offset <= 0
-            ) or (
-                self.page_animation_direction == -1
-                and self.page_animation_offset >= 0
-            )
-
-            if reached_center:
-
-                # termino l'animazione
                 self.page_animation_offset = 0.0
                 self.page_animating = False
                 self.page_animation_phase = None
@@ -519,18 +540,37 @@ class DeckPanel(Panel):
 
         if self.opening:
 
-            self.current_width += self.open_speed
-            self.current_height += self.open_speed
+            elapsed_time = (
+                pygame.time.get_ticks()
+                - self.open_start_time
+            )
 
-            # quando raggiunge la dimensione finale ferma l'animazione!
-            if self.current_width >= self.panel_width:
+            open_progress = min(
+                1.0,
+                elapsed_time / self.open_duration
+            )
+
+            # movimento ease-out:
+            # rapido all'inizio e morbido alla fine
+            eased_progress = (
+                1.0
+                - (1.0 - open_progress) ** 3
+            )
+
+            self.current_width = int(
+                self.panel_width
+                * eased_progress
+            )
+
+            self.current_height = int(
+                self.panel_height
+                * eased_progress
+            )
+
+            if open_progress >= 1.0:
                 self.current_width = self.panel_width
-
-            if self.current_height >= self.panel_height:
                 self.current_height = self.panel_height
-
-            if self.current_width == self.panel_width and self.current_height == self.panel_height:
-                self.opening = False            
+                self.opening = False       
 
     # disegna il pannello
     def draw(self, screen):
@@ -542,8 +582,17 @@ class DeckPanel(Panel):
         #creo il rettangolo del pannello
         panel_rect = pygame.Rect(x, y, self.current_width, self.current_height)
 
-        #disegno il pannello
-        pygame.draw.rect(screen, self.color, panel_rect)
+        # disegno il pannello durante l'apertura
+        pygame.draw.rect(
+            screen,
+            self.color,
+            panel_rect
+        )
+
+        # righe, testi e anteprima vengono mostrati
+        # soltanto a pannello completamente aperto
+        if self.opening:
+            return
 
         # area che conterra' la lista delle carte
         list_rect = pygame.Rect(

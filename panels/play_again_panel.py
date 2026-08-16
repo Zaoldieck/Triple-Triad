@@ -65,8 +65,7 @@ class PlayAgainPanel(Panel):
         # per mouseover e click
         self.option_rects = []
 
-    # gestisce gli eventi del pannello
-        # conferma l'opzione attualmente selezionata
+    # conferma l'opzione attualmente selezionata
     def confirm_selected_option(self):
 
         # Yes crea una nuova partita con le stesse

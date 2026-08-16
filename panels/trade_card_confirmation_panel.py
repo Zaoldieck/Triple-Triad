@@ -4,8 +4,8 @@ from panels.panel import Panel
 from ui.animated_hand_cursor import AnimatedHandCursor
 
 
-# pannello che conferma la carta scelta
-# con la Trade Rule One
+# pannello che conferma le carte scelte
+# nelle Trade Rules con selezione manuale
 class TradeCardConfirmationPanel(Panel):
 
     def __init__(
@@ -78,7 +78,8 @@ class TradeCardConfirmationPanel(Panel):
         # chiudo prima il pannello
         self.state.close_panel()
 
-        # Yes conferma definitivamente la carta
+        # Yes conferma definitivamente
+        # tutte le carte selezionate
         if self.selected_option == 0:
             self.trade_screen.confirm_trade_card()
 
@@ -192,9 +193,23 @@ class TradeCardConfirmationPanel(Panel):
             2
         )
 
-        # domanda di conferma
+        # adatto la domanda al numero
+        # di carte attualmente selezionate
+        selected_card_count = len(
+            self.trade_screen.chosen_trade_cards
+        )
+
+        if selected_card_count == 1:
+            confirmation_message = (
+                "Confirm selected card?"
+            )
+        else:
+            confirmation_message = (
+                "Confirm selected cards?"
+            )
+
         message_surface = self.message_font.render(
-            "Confirm selected card?",
+            confirmation_message,
             True,
             (255, 255, 255)
         )

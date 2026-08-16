@@ -1,7 +1,7 @@
 # set di carte abilitati nella versione corrente del gioco
 ACTIVE_CARD_SETS = [
-    "ff8",
-    "sm64"
+    "ff8"
+    #"sm64"
 ]
 
 # percorso del retro delle carte usato dalla build corrente
@@ -11,7 +11,7 @@ CARD_BACK_PATH = (
 )
 
 # mostra temporaneamente tutte le carte durante lo sviluppo
-DEBUG_REVEAL_ALL_CARDS = True
+DEBUG_REVEAL_ALL_CARDS = False
 
 # mostra la griglia 3x3 sopra lo sfondo della partita;
 # usare True per controllare l'allineamento, False per nasconderla

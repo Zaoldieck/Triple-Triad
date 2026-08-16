@@ -1,11 +1,13 @@
 import pygame
 from screens.screen import Screen
 from panels.deck_panel import DeckPanel
-# pannello di conferma per la chiusura del gioco
 from panels.exit_confirmation_panel import ExitConfirmationPanel
 # pannello di preparazione della modalità Free Match
 from panels.free_match_panel import FreeMatchPanel
-
+# pannello che mostra i crediti
+from panels.credits_panel import CreditsPanel
+# pannello scorrevole che mostra la guida
+from panels.guide_panel import GuidePanel
 
 # Classe che gestisce il menu principale del gioco
 class MainMenu(Screen):
@@ -27,13 +29,9 @@ class MainMenu(Screen):
 
         # elenco delle voci del menu
         self.menu_items = [
-            "Story Mode",
             "Free Match",
-            "Local Multiplayer",
             "Deck",
-            "Statistics",
             "Guide",
-            "Settings",
             "Credits",
             "Exit"
         ]
@@ -41,11 +39,18 @@ class MainMenu(Screen):
         # variabili per gestire la selezione e animazione delle voci del menu
         self.selected_item = 0  # indice della voce selezionata
 
-        # animazione dello scorrimento del menu
-        self.scrolling = False  # flag per indicare se il menu sta animando lo scorrimento
-        self.scroll_direction = 0  # direzione dello scorrimento (-1 per su, 1 per giù)
-        self.scroll_offset = 0.0  # offset di scorrimento per l'animazione
-        self.scroll_speed = 0.4  # velocità di scorrimento in pixel per frame
+        # stato dell'animazione di scorrimento
+        self.scrolling = False
+        self.scroll_direction = 0
+        self.scroll_offset = 0.0
+
+        # velocità espressa in pixel al secondo;
+        # 160 px/s percorrono i 41 px in circa 0,26 secondi
+        self.scroll_speed = 600.0
+
+        # momento dell'ultimo aggiornamento,
+        # usato per rendere l'animazione indipendente dagli FPS
+        self.last_update_time = pygame.time.get_ticks()
 
         #quante voci nel menu appaiono sullo schermo contemporaneamente, 5 in questo caso
         self.positions = [
@@ -83,15 +88,44 @@ class MainMenu(Screen):
                 mouse_x, mouse_y = event.pos # posizione del mouse
                 if self.selected_item_rect.collidepoint(mouse_x, mouse_y): # se il cursore e' nel "rettangolo"
                     selected = self.menu_items[self.selected_item]
+
                     if selected == "Exit":
                         self.open_exit_confirmation()
+
                     elif selected == "Free Match":
                         self.state.open_panel(
-                            FreeMatchPanel(self.width, self.height, self.state)
+                            FreeMatchPanel(
+                                self.width,
+                                self.height,
+                                self.state
+                            )
                         )
+
                     elif selected == "Deck":
                         self.state.open_panel(
-                            DeckPanel(self.width, self.height, self.state)
+                            DeckPanel(
+                                self.width,
+                                self.height,
+                                self.state
+                            )
+                        )
+
+                    elif selected == "Guide":
+                        self.state.open_panel(
+                            GuidePanel(
+                                self.width,
+                                self.height,
+                                self.state
+                            )
+                        )
+
+                    elif selected == "Credits":
+                        self.state.open_panel(
+                            CreditsPanel(
+                                self.width,
+                                self.height,
+                                self.state
+                            )
                         )
   
             # il tasto destro apre la conferma di uscita
@@ -108,8 +142,6 @@ class MainMenu(Screen):
                 if selected == "Exit":
                     self.open_exit_confirmation()
 
-                elif selected == "Story Mode":
-                    pass
 
                 elif selected == "Free Match":
                     self.state.open_panel(
@@ -118,20 +150,30 @@ class MainMenu(Screen):
 
                 elif selected == "Deck":
                     self.state.open_panel(
-                        DeckPanel(self.width, self.height, self.state)
+                        DeckPanel(
+                            self.width,
+                            self.height,
+                            self.state
+                        )
                     )
 
+                elif selected == "Guide":
+                    self.state.open_panel(
+                        GuidePanel(
+                            self.width,
+                            self.height,
+                            self.state
+                        )
+                    )
 
-
-
-                # from screens.test_screen import TestScreen  # importo la schermata di test
-                # self.state.change_screen(TestScreen(self.width, self.height, self.state))  # cambio la schermata attiva a quella di test
-
-            #if event.key == pygame.K_p:
-
-                #from panels.test_panel import TestPanel
-                #self.state.open_panel(TestPanel(self.width, self.height, self.state))
-
+                elif selected == "Credits":
+                    self.state.open_panel(
+                        CreditsPanel(
+                            self.width,
+                            self.height,
+                            self.state
+                        )
+                    )
 
             if event.key == pygame.K_UP:
                 self.selected_item = (self.selected_item - 1) % len(self.menu_items)  # seleziono la voce precedente
@@ -156,16 +198,33 @@ class MainMenu(Screen):
                 self.scroll_direction = 1
                 self.scroll_offset = 0.0
 
+    # aggiorna l'animazione di scorrimento
     def update(self):
 
-        CENTER_Y = self.height // 2  # coordinata y del centro dello schermo
-        SPACING = 41  # distanza tra le voci del menu
+        spacing = 41
 
-        if self.scrolling:  # se il menu sta animando lo scorrimento
-            self.scroll_offset += self.scroll_speed  # aggiorno l'offset di scorrimento
-            if self.scroll_offset >= SPACING:  # se l'offset ha raggiunto la distanza tra le voci del menu
-                self.scrolling = False  # fermo l'animazione dello scorrimento
-                self.scroll_offset = 0.0  # resetto l'offset di scorrimento
+        current_time = pygame.time.get_ticks()
+
+        delta_time = (
+            current_time - self.last_update_time
+        ) / 1000.0
+
+        self.last_update_time = current_time
+
+        if not self.scrolling:
+            return
+
+        # avanzo usando i secondi trascorsi,
+        # indipendentemente dal numero di FPS
+        self.scroll_offset += (
+            self.scroll_speed * delta_time
+        )
+
+        # termino l'animazione quando viene
+        # percorsa la distanza tra due voci
+        if self.scroll_offset >= spacing:
+            self.scrolling = False
+            self.scroll_offset = 0.0
 
     # disegna il menu principale sullo schermo
     def draw(self, screen):

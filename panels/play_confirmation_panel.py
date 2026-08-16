@@ -83,30 +83,10 @@ class PlayConfirmationPanel(Panel):
         if self.selected_option == 0:
 
             # raccolgo tutte le regole configurate
-            # nel Free Match Panel
-            match_rules = {
-                "cards": (
-                    self.free_match_panel.cards_options[
-                        self.free_match_panel.selected_cards_option
-                    ]
-                ),
-                "hand": (
-                    self.free_match_panel.hand_options[
-                        self.free_match_panel.selected_hand_option
-                    ]
-                ),
-                "extra": (
-                    self.free_match_panel.extra_rules.copy()
-                ),
-                "special": (
-                    self.free_match_panel.special_rules.copy()
-                ),
-                "trade": (
-                    self.free_match_panel.trade_rules[
-                        self.free_match_panel.selected_trade_rule
-                    ]
-                )
-            }
+            # tramite il metodo centrale del Free Match Panel
+            match_rules = (
+                self.free_match_panel.get_match_rules()
+            )
 
             # creo la schermata della partita passando
             # le cinque carte selezionate dal giocatore

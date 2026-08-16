@@ -94,11 +94,3 @@ class Board:
 
         # nessuna casella è rimasta vuota
         return True
-    
-    # svuota completamente il tabellone
-    def reset(self):
-
-        self.grid = [
-            [None for column in range(self.columns)]
-            for row in range(self.rows)
-        ]

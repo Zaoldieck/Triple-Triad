@@ -9,11 +9,11 @@ class GameState:
 
     def __init__(self):
 
-        #schermata attualmente attiva
-        self.current_screen = None  # schermata attualmente attiva (None se nessuna schermata è attiva)
+        # schermata attualmente attiva
+        self.current_screen = None
 
-        # eventuale pannello aperto sopra una schermata
-        self.current_panel = None  # pannello attualmente aperto (None se nessun pannello è aperto)
+        # eventuale pannello aperto sopra la schermata
+        self.current_panel = None
 
         # collezione delle carte possedute dal giocatore
         self.card_collection = CardCollection()
@@ -23,16 +23,12 @@ class GameState:
             self.card_collection
         )
 
-        # TEST TEMPORANEO: Zell è stato scoperto, ma non è posseduto
-        #self.card_collection.discovered_card_ids.add(
-        #    "ff8_zell"
-        #)
-
-        #indica se il gioco deve rimanere aperto
+        # indica se il gioco deve rimanere aperto
         self.running = True
-        
+
+    # sostituisce la schermata attualmente attiva
     def change_screen(self, new_screen):
-        # cambia la schermata attiva attualmente
+        
         self.current_screen = new_screen
 
     def open_panel(self, panel):

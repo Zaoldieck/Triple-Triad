@@ -5,6 +5,7 @@ from screens.screen import Screen
 from renderers.card_renderer import render_card
 from ui.animated_hand_cursor import AnimatedHandCursor
 from config import CARD_BACK_PATH
+from game.save_manager import save_card_collection
 from panels.trade_card_confirmation_panel import (
     TradeCardConfirmationPanel
 )
@@ -162,7 +163,7 @@ class TradeScreen(Screen):
         self.player_card_surfaces = []
 
         # versioni rosse mostrate quando
-        # l'avversario prende una carta
+        # l'avversario prende le carte del giocatore
         self.lost_player_card_surfaces = []
 
         # preparo le cinque carte avversarie
@@ -413,6 +414,24 @@ class TradeScreen(Screen):
             pygame.time.get_ticks()
         )
 
+    # salva la collezione aggiornata
+    # e apre il pannello Play Again
+    def finish_trade(self):
+
+        save_card_collection(
+            self.state.card_collection
+        )
+
+        self.state.open_panel(
+            PlayAgainPanel(
+                self.width,
+                self.height,
+                self.state,
+                self.player_cards,
+                self.match_rules
+            )
+        )
+
     # avvia le animazioni della Trade Rule Direct
     # senza eseguire nuovi flip
     def start_direct_trade(self):
@@ -446,17 +465,7 @@ class TradeScreen(Screen):
             self.start_next_loss_movement()
             return
 
-        # se nessuna carta cambia proprietario,
-        # lo scambio è già concluso
-        self.state.open_panel(
-            PlayAgainPanel(
-                self.width,
-                self.height,
-                self.state,
-                self.player_cards,
-                self.match_rules
-            )
-        )
+        self.finish_trade()
 
     # avvia il flip automatico della prossima
     # carta quando devono essere trasferite tutte
@@ -621,7 +630,8 @@ class TradeScreen(Screen):
             pygame.time.get_ticks()
         )
 
-    # gestisce la navigazione della Trade Rule One
+    # gestisce input, conferme e navigazione
+    # delle diverse Trade Rules
     def handle_events(self, event):
 
         if self.loss_movement_phase is not None:
@@ -913,17 +923,7 @@ class TradeScreen(Screen):
                     self.start_next_loss_movement()
                     return
 
-                # se non esistono carte perse,
-                # lo scambio è concluso
-                self.state.open_panel(
-                    PlayAgainPanel(
-                        self.width,
-                        self.height,
-                        self.state,
-                        self.player_cards,
-                        self.match_rules
-                    )
-                )
+                self.finish_trade()
 
     # sceglie le carte che il giocatore perderà,
     # dando priorità assoluta alle rarità maggiori
@@ -1251,17 +1251,7 @@ class TradeScreen(Screen):
                 # l'intera sequenza è terminata
                 self.chosen_lost_card = None
 
-                # Play Again appare soltanto
-                # dopo l'uscita dell'ultima carta
-                self.state.open_panel(
-                    PlayAgainPanel(
-                        self.width,
-                        self.height,
-                        self.state,
-                        self.player_cards,
-                        self.match_rules
-                    )
-                )
+                self.finish_trade()
 
     def continue_loss_animation(self):
 
@@ -1460,11 +1450,11 @@ class TradeScreen(Screen):
         self.trade_flip_start_time = current_time
 
     # disegna nella parte inferiore dello schermo
-    # il pannello con il nome della carta indicata
+    # il pannello con nome e quantità della carta indicata
     def draw_card_name_panel(
         self,
         screen,
-        card_name
+        card
     ):
 
         panel_rect = pygame.Rect(
@@ -1493,12 +1483,51 @@ class TradeScreen(Screen):
             2
         )
 
-        # preparo e centro il nome
+        # recupero la quantità attualmente posseduta
+        card_quantity = (
+            self.state.card_collection.get_quantity(
+                card
+            )
+        )
+
+        # le carte di rarità 1 mostrano
+        # soltanto il simbolo dell'infinito
+        if card.rarity == 1:
+            quantity_text = "∞"
+
+        # le altre carte mostrano la quantità posseduta
+        else:
+            quantity_text = f"x{card_quantity}"
+
+        # una carta con quantità x0 appare in blu
+        if (
+            card.rarity > 1
+            and card_quantity == 0
+        ):
+            text_color = (
+                70,
+                160,
+                255
+            )
+
+        # le carte già possedute appaiono in bianco
+        else:
+            text_color = (
+                255,
+                255,
+                255
+            )
+
+        # preparo nome e quantità
+        card_information_text = (
+            f"{card.name}   {quantity_text}"
+        )
+
         card_name_surface = (
             self.card_name_panel_font.render(
-                card_name,
+                card_information_text,
                 True,
-                (255, 255, 255)
+                text_color
             )
         )
 
@@ -2005,7 +2034,7 @@ class TradeScreen(Screen):
 
             self.draw_card_name_panel(
                 screen,
-                focused_card.name
+                focused_card
             )
 
         # quando la carta vinta è ferma al centro,
@@ -2022,7 +2051,7 @@ class TradeScreen(Screen):
 
             self.draw_card_name_panel(
                 screen,
-                acquired_card.name
+                acquired_card
             )
 
         if (
@@ -2037,5 +2066,5 @@ class TradeScreen(Screen):
 
             self.draw_card_name_panel(
                 screen,
-                lost_card.name
+                lost_card
             )
